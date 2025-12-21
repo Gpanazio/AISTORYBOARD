@@ -22,20 +22,14 @@ import {
   Download,
   Play,
   GripVertical,
-  LayoutTemplate
+  LayoutTemplate,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
-// COLOQUE SUAS CHAVES AQUI
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
-
-// --- SQL DE CORREÇÃO (RODE ISSO SE ESTIVER VAZIO) ---
-/*
-  alter table sbprojects disable row level security;
-  alter table sbframes disable row level security;
-  alter table sbframes add column if not exists order_index bigint default 0;
-*/
 
 // --- UTILITÁRIOS ---
 
@@ -71,7 +65,6 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
     setCurrentIndex((prev) => (prev - 1 + frames.length) % frames.length);
   };
 
-  // Suporte a teclado
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'ArrowRight') handleNext();
@@ -88,7 +81,6 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black z-[60] flex flex-col">
-      {/* Header Carrossel */}
       <div className="flex justify-between items-center p-6 text-zinc-500">
         <div className="text-xs font-mono tracking-widest uppercase">
           FRAME {String(currentIndex + 1).padStart(2, '0')} / {String(frames.length).padStart(2, '0')}
@@ -98,15 +90,12 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
         </button>
       </div>
 
-      {/* Área da Imagem */}
       <div className="flex-1 relative flex items-center justify-center p-4 overflow-hidden bg-black">
         <img 
           src={currentFrame.image_base64} 
           alt={currentFrame.title} 
           className="max-w-full max-h-full object-contain"
         />
-        
-        {/* Navegação Minimalista */}
         <button 
           onClick={handlePrev}
           className="absolute left-4 p-4 text-zinc-500 hover:text-red-600 transition"
@@ -121,7 +110,6 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
         </button>
       </div>
 
-      {/* Footer Info */}
       <div className="bg-black p-8 pb-10 border-t border-zinc-900">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title || "SEM TÍTULO"}</h2>
@@ -390,7 +378,6 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
       <div className="bg-zinc-950 border border-zinc-800 w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col md:flex-row overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900 z-10"></div>
         
-        {/* Coluna Visual */}
         <div className="w-full md:w-1/2 bg-black flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-zinc-900 relative group">
           {formData.imagePreview ? (
             <img src={formData.imagePreview} alt="Preview" className="w-full h-full object-contain p-8" />
@@ -408,7 +395,6 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
           </label>
         </div>
 
-        {/* Coluna Dados */}
         <div className="w-full md:w-1/2 p-8 flex flex-col bg-zinc-950 overflow-y-auto">
           <div className="flex justify-between items-center mb-8 border-b border-zinc-900 pb-4">
             <h2 className="text-xl font-bold text-white tracking-tight uppercase">
@@ -490,7 +476,6 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
             <GripVertical size={20} />
         </div>
 
-        {/* Actions Overlay */}
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
             <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-3 border border-white text-white hover:bg-white hover:text-black transition rounded-full" title="Editar"><Edit3 size={18} /></button>
             <button onClick={(e) => { e.stopPropagation(); onSetCover(data); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-white hover:text-white transition rounded-full" title="Definir como Capa"><LayoutTemplate size={18} /></button>
@@ -538,6 +523,7 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
 export default function App() {
   const [supabase, setSupabase] = useState(null);
   const [isLibLoaded, setIsLibLoaded] = useState(false);
+  const [isConnected, setIsConnected] = useState(false); // Status da conexão
   
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null); 
@@ -554,6 +540,19 @@ export default function App() {
 
   const dragItem = useRef();
   const dragOverItem = useRef();
+
+  // Retry logic wrapper
+  const fetchWithRetry = async (fn, retries = 3, delay = 1000) => {
+    try {
+      await fn();
+    } catch (err) {
+      if (retries > 0) {
+        setTimeout(() => fetchWithRetry(fn, retries - 1, delay * 1.5), delay);
+      } else {
+        setErrorMsg("Erro de conexão. Verifique sua internet.");
+      }
+    }
+  };
 
   useEffect(() => {
     if (window.supabase) {
@@ -573,6 +572,7 @@ export default function App() {
       try {
         const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         setSupabase(client);
+        setIsConnected(true);
       } catch (e) {
         console.error("Erro inicialização Supabase:", e);
         setErrorMsg("Erro nas chaves de API.");
@@ -584,8 +584,21 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase) return;
-    fetchProjects();
-    const channel = supabase.channel('sbprojects_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, fetchProjects).subscribe();
+    
+    // Initial fetch with retry
+    fetchWithRetry(fetchProjects);
+
+    // Realtime subscription robusta
+    const channel = supabase.channel('sbprojects_channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, (payload) => {
+            console.log('Realtime update:', payload);
+            fetchProjects();
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') setIsConnected(true);
+            if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setIsConnected(false);
+        });
+
     return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
@@ -595,9 +608,11 @@ export default function App() {
       if (error) throw error;
       setProjects(data || []);
       setLoading(false);
+      setErrorMsg(null); // Clear errors on success
     } catch (error) {
       if (!error.message.includes('relation "sbprojects" does not exist')) setErrorMsg(error.message);
       setLoading(false);
+      throw error; // Re-throw for retry mechanism
     }
   };
 
@@ -649,16 +664,24 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase || !currentProject) return;
-    fetchFrames();
-    const channel = supabase.channel(`sbframes_${currentProject.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, fetchFrames).subscribe();
+    
+    // Initial fetch with retry
+    fetchWithRetry(fetchFrames);
+
+    const channel = supabase.channel(`sbframes_${currentProject.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, (payload) => {
+            console.log('Realtime frame update:', payload);
+            fetchFrames();
+        })
+        .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   }, [currentProject, supabase]);
 
   const fetchFrames = async () => {
     if (!currentProject) return;
-    setLoading(true);
+    // Don't set global loading here to avoid flashing, handle internally if needed
     try {
-      // Tenta buscar com a ordenação personalizada
       const { data, error } = await supabase
         .from('sbframes')
         .select('*')
@@ -667,9 +690,8 @@ export default function App() {
         .order('created_at', { ascending: true });
       
       if (error) {
-        // Fallback: Se der erro (ex: coluna order_index faltando), tenta busca simples
         if (error.code === 'PGRST301' || error.message.includes('order_index')) {
-             console.warn("Coluna order_index não encontrada, buscando sem ordenação customizada.");
+             console.warn("Fallback: Buscando sem order_index");
              const { data: fallbackData, error: fallbackError } = await supabase
                 .from('sbframes')
                 .select('*')
@@ -685,9 +707,8 @@ export default function App() {
       setFrames(data || []);
     } catch (error) {
       console.error("Erro Supabase:", error);
-      setErrorMsg("Erro ao carregar frames: " + error.message + " (Verifique se RLS está desativado na tabela sbframes)");
-    } finally {
-      setLoading(false);
+      setErrorMsg(error.message);
+      throw error;
     }
   };
 
@@ -780,14 +801,24 @@ export default function App() {
 
   if (!isLibLoaded || (loading && !projects.length && !currentProject)) {
     return <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-zinc-500">
-      <Loader2 className="animate-spin text-red-600" size={48} />
+      <div className="relative">
+          <div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div>
+          <Loader2 className="animate-spin text-red-600 relative z-10" size={64} />
+      </div>
       <p className="text-xs uppercase tracking-widest text-red-600">Carregando BrickBoard...</p>
+      {errorMsg && <p className="text-red-500 text-xs text-center px-4 max-w-md">{errorMsg}</p>}
     </div>;
   }
 
   if (!currentProject) {
     return (
-      <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white">
+      <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative">
+        {/* Status Indicator */}
+        <div className="absolute top-6 right-8 z-30 flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-red-500 shadow-[0_0_10px_#ef4444]'} transition-colors`}></div>
+            <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-widest">{isConnected ? 'Online' : 'Offline'}</span>
+        </div>
+
         <ProjectList 
           projects={projects} 
           onSelect={(project) => {
@@ -816,6 +847,9 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
+           {/* Status Indicator (Compact) */}
+           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div>
+
            <button 
              onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }}
              className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"
@@ -842,7 +876,6 @@ export default function App() {
                     <Loader2 className="animate-spin text-red-600 relative z-10" size={64} />
                 </div>
                 <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p>
-                {errorMsg && <p className="text-red-500 text-xs mt-4">{errorMsg}</p>}
             </div>
         ) : frames.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950">
