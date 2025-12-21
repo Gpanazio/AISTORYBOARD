@@ -15,7 +15,8 @@ import {
   Loader2,
   Maximize2,
   LogOut,
-  AlertTriangle
+  AlertTriangle,
+  UserX
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -67,7 +68,7 @@ const copyToClipboard = (text) => {
 
 // --- COMPONENTES ---
 
-const AuthScreen = ({ client }) => {
+const AuthScreen = ({ client, onGuestLogin }) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -95,7 +96,7 @@ const AuthScreen = ({ client }) => {
 
         <form onSubmit={handleMagicLink} className="space-y-4">
           <div>
-            <label className="block text-xs font-mono text-zinc-400 mb-1">EMAIL</label>
+            <label className="block text-xs font-mono text-zinc-400 mb-1">EMAIL (OPCIONAL)</label>
             <input 
               type="email" 
               value={email}
@@ -110,6 +111,24 @@ const AuthScreen = ({ client }) => {
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition disabled:opacity-50"
           >
             {loading ? 'Enviando...' : 'Entrar com Magic Link'}
+          </button>
+          
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-800"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-zinc-900 text-zinc-500">ou</span>
+            </div>
+          </div>
+
+          <button 
+            type="button"
+            onClick={onGuestLogin}
+            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 rounded-lg transition flex items-center justify-center gap-2"
+          >
+            <UserX size={18} />
+            Continuar sem Login
           </button>
           
           {message && <p className="text-center text-sm text-emerald-400 mt-2">{message}</p>}
@@ -264,6 +283,7 @@ export default function App() {
   const [supabase, setSupabase] = useState(null);
   const [isLibLoaded, setIsLibLoaded] = useState(false);
   const [session, setSession] = useState(null);
+  const [isGuest, setIsGuest] = useState(false); // Novo estado para controlar visitante
   const [frames, setFrames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -274,19 +294,14 @@ export default function App() {
 
   // --- LÓGICA DE CARREGAMENTO PARA PREVIEW (REMOVER EM PRODUÇÃO) ---
   useEffect(() => {
-    // Se estiver em ambiente com window.supabase (já carregado)
     if (window.supabase) {
       setIsLibLoaded(true);
       return;
     }
-    
-    // Injeção do Script
     const script = document.createElement('script');
     script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
     script.async = true;
-    script.onload = () => {
-      setIsLibLoaded(true);
-    };
+    script.onload = () => { setIsLibLoaded(true); };
     script.onerror = () => {
       setErrorMsg("Falha ao carregar biblioteca Supabase. (Modo Preview)");
       setLoading(false);
@@ -294,11 +309,9 @@ export default function App() {
     document.body.appendChild(script);
   }, []);
 
-  // Inicializa o cliente quando a lib estiver pronta
   useEffect(() => {
     if (isLibLoaded && !supabase && SUPABASE_URL !== 'SUA_URL_AQUI') {
       try {
-        // window.supabase vem do script CDN
         const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         setSupabase(client);
       } catch (e) {
@@ -306,7 +319,7 @@ export default function App() {
         setErrorMsg("Erro na inicialização: Verifique suas chaves.");
       }
     } else if (isLibLoaded && !supabase) {
-      setLoading(false); // Lib carregada mas sem chaves
+      setLoading(false); 
     }
   }, [isLibLoaded]);
   // -------------------------------------------------------------
@@ -317,7 +330,9 @@ export default function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setLoading(false);
+      // Só para de carregar se já tiver sessão. Se não tiver, espera escolha do usuário (AuthScreen)
+      if (session) setLoading(false);
+      else setLoading(false); 
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -327,9 +342,10 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  // 2. Buscar Frames e Realtime
+  // 2. Buscar Frames (funciona com usuário logado ou guest)
   useEffect(() => {
-    if (!session || !supabase) return;
+    if (!supabase) return;
+    if (!session && !isGuest) return; // Só busca se tiver login OU for guest
     
     fetchFrames();
 
@@ -343,7 +359,7 @@ export default function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session, supabase]);
+  }, [session, isGuest, supabase]);
 
   const fetchFrames = async () => {
     try {
@@ -361,7 +377,7 @@ export default function App() {
   };
 
   const handleSave = async (formData) => {
-    if (!session || !supabase) return;
+    if (!supabase) return;
     setIsSaving(true);
     try {
       let imageBase64 = formData.imagePreview;
@@ -369,13 +385,16 @@ export default function App() {
         imageBase64 = await compressImage(formData.image);
       }
 
+      // Se não tiver sessão, usa um ID de convidado fixo
+      const userId = session?.user?.id || 'guest_user';
+
       const frameData = {
         title: formData.title,
         description: formData.description,
         prompt: formData.prompt,
         camera_move: formData.cameraMove, 
         image_base64: imageBase64,
-        user_id: session.user.id,
+        user_id: userId,
         updated_at: new Date()
       };
 
@@ -397,7 +416,7 @@ export default function App() {
       fetchFrames(); 
     } catch (error) {
       console.error("Erro ao salvar:", error);
-      alert("Erro ao salvar: " + error.message);
+      alert("Erro ao salvar: " + error.message + "\n\nDICA: Se você não está logado, certifique-se de ter rodado o comando SQL para desativar o RLS.");
     } finally {
       setIsSaving(false);
     }
@@ -412,7 +431,9 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (supabase && session) await supabase.auth.signOut();
+    setIsGuest(false);
+    setFrames([]);
   };
 
   if (!isLibLoaded) {
@@ -426,9 +447,9 @@ export default function App() {
     return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={48} /></div>;
   }
 
-  if (!session || !supabase) {
-    // Se o supabase não iniciou (sem chaves) ou sem sessão, mostra auth
-    return <AuthScreen client={supabase} />;
+  // Mostra AuthScreen se não tiver sessão E não tiver optado por guest
+  if ((!session && !isGuest) || !supabase) {
+    return <AuthScreen client={supabase} onGuestLogin={() => setIsGuest(true)} />;
   }
 
   return (
@@ -461,7 +482,9 @@ export default function App() {
           <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900/50">
             <Film size={64} className="text-zinc-700 mb-4" />
             <h2 className="text-2xl font-bold text-zinc-500 mb-2">Seu storyboard está vazio</h2>
-            <p className="text-zinc-600 mb-8 max-w-md text-center">Banco de dados Supabase conectado. Comece a criar.</p>
+            <p className="text-zinc-600 mb-8 max-w-md text-center">
+              {isGuest ? 'Modo Visitante Ativo (Dados Públicos).' : 'Banco de dados Supabase conectado.'} Comece a criar.
+            </p>
             <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-lg font-medium transition">Criar Primeiro Frame</button>
           </div>
         ) : (
