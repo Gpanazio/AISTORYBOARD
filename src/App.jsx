@@ -17,7 +17,8 @@ import {
   FolderOpen,
   ChevronLeft,
   LayoutGrid,
-  Calendar
+  Calendar,
+  Download
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -26,38 +27,18 @@ const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
 
 // --- UTILITÁRIOS ---
-const compressImage = (file) => {
+
+const convertFileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const elem = document.createElement('canvas');
-        const maxWidth = 800;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        }
-
-        elem.width = width;
-        elem.height = height;
-        const ctx = elem.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(elem.toDataURL('image/jpeg', 0.7));
-      };
-      img.onerror = (error) => reject(error);
-    };
+    reader.onload = () => resolve(reader.result);
     reader.onerror = (error) => reject(error);
   });
 };
 
 const copyToClipboard = (text) => {
-  if (!text) return; // Não tenta copiar se estiver vazio
+  if (!text) return; 
   const textArea = document.createElement("textarea");
   textArea.value = text;
   document.body.appendChild(textArea);
@@ -87,7 +68,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete }) => {
       <div className="flex justify-between items-center mb-10">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Meus Projetos</h1>
-          <p className="text-zinc-400">Gerencie seus filmes e storyboards</p>
+          <p className="text-zinc-400">Repositório oficial de frames e storyboards</p>
         </div>
         <button 
           onClick={() => setIsCreating(true)}
@@ -231,7 +212,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
           <label className="mt-6 cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg border border-zinc-600 transition flex items-center gap-2">
             <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
             <ImageIcon size={18} />
-            Escolher Frame (Obrigatório)
+            Escolher Frame (Original)
           </label>
         </div>
 
@@ -263,7 +244,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
               <button type="button" onClick={onClose} className="px-4 py-2 text-zinc-400 hover:text-white">Cancelar</button>
               <button type="submit" disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50">
                 {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                Salvar
+                Salvar (Original)
               </button>
             </div>
           </form>
@@ -275,12 +256,16 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
 
 const FrameCard = ({ data, onDelete, onEdit, index }) => {
   const [copied, setCopied] = useState(false);
+  
   const handleCopyPrompt = () => {
     if (!data.prompt) return;
     copyToClipboard(data.prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Nome do arquivo para download
+  const downloadName = `cineboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
 
   return (
     <div className="group relative bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all duration-300 hover:shadow-xl flex flex-col h-full">
@@ -291,11 +276,14 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
           <div className="w-full h-full flex items-center justify-center text-zinc-700"><Film size={48} /></div>
         )}
         <div className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-xs font-mono px-2 py-1 rounded">#{index + 1}</div>
+        
+        {/* Actions Overlay */}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-            <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-2 bg-white text-black rounded-full hover:bg-emerald-500 hover:text-white transition"><Edit3 size={20} /></button>
-            <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition"><Trash2 size={20} /></button>
+            <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-2 bg-white text-black rounded-full hover:bg-emerald-500 hover:text-white transition" title="Editar"><Edit3 size={20} /></button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition" title="Excluir"><Trash2 size={20} /></button>
         </div>
       </div>
+      
       <div className="p-4 flex flex-col flex-1">
         <div className="flex justify-between items-start mb-2 min-h-[24px]">
             <h3 className={`font-bold truncate pr-2 ${data.title ? 'text-zinc-100' : 'text-zinc-600 italic'}`}>
@@ -303,13 +291,28 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
             </h3>
             {data.camera_move && <span className="text-[10px] uppercase tracking-wider bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">{data.camera_move}</span>}
         </div>
+        
         <p className="text-zinc-400 text-xs line-clamp-2 mb-3 h-8">{data.description || ""}</p>
+        
         <div className="mt-auto pt-3 border-t border-zinc-800">
              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-emerald-400 uppercase">Prompt IA</span>
+                <div className="flex items-center gap-3">
+                   {/* Botão de Download do Original */}
+                   <a 
+                     href={data.image_base64} 
+                     download={downloadName}
+                     className="text-zinc-500 hover:text-emerald-400 transition flex items-center gap-1 text-xs"
+                     title="Baixar Original"
+                     onClick={(e) => e.stopPropagation()}
+                   >
+                     <Download size={14} /> 
+                     <span className="hidden sm:inline">Original</span>
+                   </a>
+                </div>
+
                 {data.prompt && (
                   <button onClick={handleCopyPrompt} className={`text-xs flex items-center gap-1 ${copied ? 'text-green-400' : 'text-zinc-500 hover:text-white'} transition`}>
-                      {copied ? 'Copiado!' : <><Copy size={12} /> Copiar</>}
+                      {copied ? 'Copiado!' : <><Copy size={12} /> Copiar Prompt</>}
                   </button>
                 )}
              </div>
@@ -413,12 +416,25 @@ export default function App() {
     }
   };
 
+  // --- FUNÇÃO DE DELETAR PROJETO ATUALIZADA (COM SENHA) ---
   const handleDeleteProject = async (id) => {
     if (!supabase) return;
-    if (window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) {
-      const { error } = await supabase.from('sbprojects').delete().eq('id', id);
-      if (error) alert("Erro: " + error.message);
-      else fetchProjects();
+    
+    // 1. Confirmação Básica
+    if (!window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) {
+      return;
+    }
+
+    // 2. Solicitação de Senha Simples (Prompt)
+    const password = window.prompt("Digite a senha de administrador para confirmar a exclusão:");
+    
+    // 3. Verificação da Senha (Brick$2016)
+    if (password === "Brick$2016") {
+        const { error } = await supabase.from('sbprojects').delete().eq('id', id);
+        if (error) alert("Erro: " + error.message);
+        else fetchProjects();
+    } else if (password !== null) { // Se usuário não clicou em Cancelar
+        alert("Senha incorreta. O projeto não foi excluído.");
     }
   };
 
@@ -462,7 +478,7 @@ export default function App() {
   const handleSaveFrame = async (formData) => {
     if (!supabase || !currentProject) return;
     
-    // VALIDAÇÃO: Única coisa obrigatória é a imagem (seja nova ou preview existente)
+    // VALIDAÇÃO: Única coisa obrigatória é a imagem
     if (!formData.image && !formData.imagePreview) {
       alert("A imagem é obrigatória para criar um frame.");
       return;
@@ -472,11 +488,12 @@ export default function App() {
     try {
       let imageBase64 = formData.imagePreview;
       if (formData.image) {
-        imageBase64 = await compressImage(formData.image);
+        // AGORA USA A FUNÇÃO SEM COMPRESSÃO
+        imageBase64 = await convertFileToBase64(formData.image);
       }
 
       const frameData = {
-        title: formData.title || '', // Garante string vazia se undefined
+        title: formData.title || '',
         description: formData.description || '',
         prompt: formData.prompt || '',
         camera_move: formData.cameraMove || '', 
@@ -498,7 +515,12 @@ export default function App() {
       fetchFrames(); 
     } catch (error) {
       console.error("Erro ao salvar:", error);
-      alert("Erro ao salvar: " + error.message);
+      // Tratamento de erro específico para Payload Too Large
+      if (error.message && error.message.includes('413')) {
+        alert("Erro: A imagem é muito grande para o banco de dados (Limite ~6MB). Tente uma imagem menor ou configure um Bucket de Storage.");
+      } else {
+        alert("Erro ao salvar: " + error.message);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -584,7 +606,7 @@ export default function App() {
             <Film size={64} className="text-zinc-700 mb-4" />
             <h2 className="text-2xl font-bold text-zinc-500 mb-2">Projeto Vazio</h2>
             <p className="text-zinc-600 mb-8 max-w-md text-center">
-              Adicione os frames gerados pela IA para montar sua cena.
+              Adicione os frames originais (sem compressão) aqui.
             </p>
             <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-lg font-medium transition">Criar Primeiro Frame</button>
           </div>
@@ -593,6 +615,21 @@ export default function App() {
             {frames.map((frame, index) => (
               <FrameCard key={frame.id} index={index} data={frame} onDelete={handleDeleteFrame} onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} />
             ))}
+            
+            {/* CARD DE ADICIONAR AO FINAL DO GRID */}
+            <button
+              onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }}
+              className="group relative bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-xl overflow-hidden hover:border-emerald-500/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left"
+            >
+              <div className="w-full aspect-video flex items-center justify-center bg-zinc-900/50 group-hover:bg-zinc-800/50 transition-colors">
+                 <div className="w-16 h-16 rounded-full bg-zinc-800 group-hover:bg-emerald-500/20 flex items-center justify-center transition-colors shadow-lg">
+                    <Plus className="text-zinc-500 group-hover:text-emerald-500" size={32} />
+                 </div>
+              </div>
+              <div className="p-4 flex flex-col flex-1 items-center justify-center">
+                 <span className="text-zinc-500 font-medium group-hover:text-emerald-400">Adicionar Novo Frame</span>
+              </div>
+            </button>
           </div>
         )}
       </main>
