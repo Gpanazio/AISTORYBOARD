@@ -25,7 +25,8 @@ import {
   LayoutTemplate,
   Wifi,
   WifiOff,
-  RefreshCw
+  RefreshCw,
+  UploadCloud // Ícone novo para Drop Zone
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -538,17 +539,20 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [carouselOpen, setCarouselOpen] = useState(false);
   const [carouselStartIndex, setCarouselStartIndex] = useState(0);
+  
+  // Drag & Drop estados
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   const dragItem = useRef();
   const dragOverItem = useRef();
 
   // Retry logic wrapper
-  const fetchWithRetry = async (fn, retries = 10, delay = 2000) => { // Aumentado para 10 retries e 2s delay
+  const fetchWithRetry = async (fn, retries = 10, delay = 2000) => {
     try {
-      await fn(false); // False = não forçar loading visual no retry automático
+      await fn(false); 
     } catch (err) {
       if (retries > 0) {
-        // Se for erro de timeout, espera mais
         const waitTime = err.message && err.message.includes('timeout') ? delay * 2 : delay;
         console.log(`Retrying... attempts left: ${retries}. Waiting ${waitTime}ms`);
         setTimeout(() => fetchWithRetry(fn, retries - 1, waitTime), waitTime);
@@ -588,9 +592,7 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase) return;
-    
     fetchWithRetry(fetchProjects);
-
     const channel = supabase.channel('sbprojects_channel')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, (payload) => {
             console.log('Realtime update:', payload);
@@ -600,7 +602,6 @@ export default function App() {
             if (status === 'SUBSCRIBED') setIsConnected(true);
             if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setIsConnected(false);
         });
-
     return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
@@ -613,8 +614,7 @@ export default function App() {
       setErrorMsg(null); 
     } catch (error) {
       if (!error.message.includes('relation "sbprojects" does not exist')) setErrorMsg(error.message);
-      // Propaga o erro para o retry handler
-      throw error;
+      throw error; 
     } finally {
         setLoading(false);
     }
@@ -683,7 +683,7 @@ export default function App() {
 
   const fetchFrames = async (showLoading = true) => {
     if (!currentProject) return;
-    if (showLoading) setLoading(true); // Força loading visual se solicitado (botão recarregar)
+    if (showLoading) setLoading(true); 
     
     try {
       const { data, error } = await supabase
@@ -720,6 +720,90 @@ export default function App() {
     }
   };
 
+  // --- DRAG AND DROP EXTERNO (FILES) ---
+  const handleDragOverFile = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) {
+        setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeaveFile = (e) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+  };
+
+  const handleDropFile = async (e) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+
+    if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+
+    const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+    
+    if (files.length === 0) {
+        alert("Apenas arquivos de imagem são permitidos.");
+        return;
+    }
+
+    await uploadFilesBatch(files);
+  };
+
+  const uploadFilesBatch = async (files) => {
+    if (!supabase || !currentProject) return;
+    
+    let successCount = 0;
+    let failCount = 0;
+    
+    let currentOrderIndex = frames.length;
+
+    for (let i = 0; i < files.length; i++) {
+        setUploadProgress({ current: i + 1, total: files.length });
+        const file = files[i];
+
+        try {
+            const imageBase64 = await convertFileToBase64(file);
+            const fileName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+
+            const frameData = {
+                title: fileName,
+                description: '',
+                prompt: '',
+                camera_move: '',
+                image_base64: imageBase64,
+                project_id: currentProject.id,
+                order_index: currentOrderIndex + i,
+                updated_at: new Date()
+            };
+
+            const { error } = await supabase.from('sbframes').insert([frameData]);
+            
+            if (error) {
+                console.error(`Erro ao enviar ${file.name}:`, error);
+                failCount++;
+                if (error.message && error.message.includes('413')) {
+                     alert(`Imagem ${file.name} muito grande (limite ~6MB). Pulando...`);
+                }
+            } else {
+                successCount++;
+            }
+
+        } catch (err) {
+            console.error(err);
+            failCount++;
+        }
+    }
+
+    setUploadProgress(null);
+    if (successCount > 0) {
+        fetchFrames(false);
+    }
+    if (failCount > 0) {
+        alert(`${failCount} imagens falharam ao enviar. Verifique o tamanho ou conexão.`);
+    }
+  };
+
+  // --- DRAG AND DROP INTERNO (REORDENAÇÃO) ---
   const handleDragStart = (e, position) => {
     dragItem.current = position;
   };
@@ -821,7 +905,6 @@ export default function App() {
   if (!currentProject) {
     return (
       <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative">
-        {/* Status Indicator */}
         <div className="absolute top-6 right-8 z-30 flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-red-500 shadow-[0_0_10px_#ef4444]'} transition-colors`}></div>
             <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-widest">{isConnected ? 'Online' : 'Offline'}</span>
@@ -842,7 +925,33 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white">
+    <div 
+        className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative"
+        onDragOver={handleDragOverFile}
+        onDragLeave={handleDragLeaveFile}
+        onDrop={handleDropFile}
+    >
+      
+      {/* DROP ZONE OVERLAY */}
+      {isDraggingFile && (
+          <div className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center pointer-events-none">
+              <UploadCloud size={80} className="text-red-600 mb-4 animate-bounce" />
+              <h2 className="text-3xl font-bold text-white uppercase tracking-widest">Soltar Frames Aqui</h2>
+              <p className="text-zinc-500 mt-2">Adicionar ao final do projeto</p>
+          </div>
+      )}
+
+      {/* PROGRESSO DE UPLOAD */}
+      {uploadProgress && (
+          <div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up">
+              <Loader2 className="animate-spin text-red-600" size={24} />
+              <div>
+                  <p className="text-xs font-bold text-white uppercase tracking-widest">Enviando Frames...</p>
+                  <p className="text-xs text-zinc-500">Processando {uploadProgress.current} de {uploadProgress.total}</p>
+              </div>
+          </div>
+      )}
+
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6">
           <button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar">
@@ -855,7 +964,6 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
-           {/* Status Indicator (Compact) */}
            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div>
 
            <button 
@@ -876,7 +984,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="p-8 max-w-[1800px] mx-auto">
+      <main className="p-8 max-w-[1800px] mx-auto min-h-[calc(100vh-100px)]">
         {loading ? (
             <div className="flex flex-col items-center justify-center h-[60vh] gap-6">
                 <div className="relative">
@@ -891,9 +999,8 @@ export default function App() {
                 <Film size={40} className="text-zinc-700" strokeWidth={1} />
             </div>
             <h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2>
-            <p className="text-zinc-600 text-sm mb-4 text-center max-w-md">O Monolito aguarda seus frames.</p>
+            <p className="text-zinc-600 text-sm mb-4 text-center max-w-md">Arraste seus frames para cá ou adicione manualmente.</p>
             
-            {/* Mensagem de Erro (Se houver) */}
             {errorMsg && (
                 <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-xs font-mono max-w-md text-center">
                     {errorMsg}
