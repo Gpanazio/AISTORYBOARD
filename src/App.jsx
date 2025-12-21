@@ -79,50 +79,50 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
   if (!currentFrame) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/95 z-[60] flex flex-col">
+    <div className="fixed inset-0 bg-black z-[60] flex flex-col">
       {/* Header Carrossel */}
-      <div className="flex justify-between items-center p-4 text-zinc-400">
-        <div className="text-sm font-mono">
-          FRAME {currentIndex + 1} / {frames.length}
+      <div className="flex justify-between items-center p-6 text-zinc-500">
+        <div className="text-xs font-mono tracking-widest uppercase">
+          FRAME {String(currentIndex + 1).padStart(2, '0')} / {String(frames.length).padStart(2, '0')}
         </div>
-        <button onClick={onClose} className="hover:text-white p-2 rounded-full hover:bg-zinc-800 transition">
+        <button onClick={onClose} className="hover:text-red-600 p-2 transition">
           <X size={24} />
         </button>
       </div>
 
       {/* Área da Imagem */}
-      <div className="flex-1 relative flex items-center justify-center p-4 overflow-hidden">
+      <div className="flex-1 relative flex items-center justify-center p-4 overflow-hidden bg-black">
         <img 
           src={currentFrame.image_base64} 
           alt={currentFrame.title} 
-          className="max-w-full max-h-full object-contain shadow-2xl"
+          className="max-w-full max-h-full object-contain"
         />
         
-        {/* Navegação */}
+        {/* Navegação Minimalista */}
         <button 
           onClick={handlePrev}
-          className="absolute left-4 p-4 bg-black/50 hover:bg-emerald-600/80 text-white rounded-full transition backdrop-blur-sm"
+          className="absolute left-4 p-4 text-zinc-500 hover:text-red-600 transition"
         >
-          <ChevronLeft size={32} />
+          <ChevronLeft size={48} strokeWidth={1} />
         </button>
         <button 
           onClick={handleNext}
-          className="absolute right-4 p-4 bg-black/50 hover:bg-emerald-600/80 text-white rounded-full transition backdrop-blur-sm"
+          className="absolute right-4 p-4 text-zinc-500 hover:text-red-600 transition"
         >
-          <ChevronRight size={32} />
+          <ChevronRight size={48} strokeWidth={1} />
         </button>
       </div>
 
       {/* Footer Info */}
-      <div className="bg-gradient-to-t from-black via-black/80 to-transparent p-8 pb-10">
+      <div className="bg-black p-8 pb-10 border-t border-zinc-900">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl font-bold text-white mb-2">{currentFrame.title || "Sem título"}</h2>
+          <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title || "SEM TÍTULO"}</h2>
           {currentFrame.camera_move && (
-            <span className="inline-block bg-emerald-900/50 text-emerald-400 text-xs px-2 py-1 rounded border border-emerald-800 mb-3 uppercase tracking-wider">
+            <span className="inline-block bg-red-600 text-white text-[10px] font-bold px-2 py-1 mb-4 uppercase tracking-widest">
               {currentFrame.camera_move}
             </span>
           )}
-          <p className="text-zinc-400 max-w-2xl mx-auto">{currentFrame.description}</p>
+          <p className="text-zinc-500 max-w-2xl mx-auto font-light leading-relaxed">{currentFrame.description}</p>
         </div>
       </div>
     </div>
@@ -163,51 +163,52 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-10">
+    <div className="p-6 max-w-7xl mx-auto">
+      <div className="flex justify-between items-end mb-12 border-b border-zinc-900 pb-6">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Meus Projetos</h1>
-          <p className="text-zinc-400">Repositório oficial de frames e storyboards</p>
+          <h1 className="text-4xl font-bold text-white mb-1 tracking-tighter">BRICK<span className="text-red-600">BOARD</span></h1>
+          <p className="text-zinc-500 text-xs tracking-widest uppercase">Storyboard System</p>
         </div>
         <button 
           onClick={openCreateModal}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-900/20"
+          className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-sm tracking-wide uppercase shadow-[0_0_15px_rgba(220,38,38,0.3)] hover:shadow-[0_0_25px_rgba(220,38,38,0.5)]"
         >
-          <FolderPlus size={20} /> Novo Projeto
+          <Plus size={18} /> Novo Projeto
         </button>
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-4">
-              {editingProject ? 'Editar Projeto' : 'Criar Novo Projeto'}
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md p-8 shadow-2xl relative">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900"></div>
+            <h2 className="text-2xl font-bold text-white mb-6 tracking-tight">
+              {editingProject ? 'EDITAR PROJETO' : 'NOVO PROJETO'}
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-xs font-mono text-zinc-400 mb-1">NOME DO PROJETO</label>
+                <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">TÍTULO</label>
                 <input 
                   autoFocus
                   type="text" 
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  className="w-full bg-black border border-zinc-700 rounded p-3 text-white focus:border-emerald-500 outline-none"
-                  placeholder="Ex: Curta Metragem Sci-Fi"
+                  className="w-full bg-black border border-zinc-800 p-4 text-white focus:border-red-600 outline-none transition-colors placeholder:text-zinc-700"
+                  placeholder="DIGITE O NOME DO PROJETO"
                 />
               </div>
               <div>
-                <label className="block text-xs font-mono text-zinc-400 mb-1">DESCRIÇÃO (Opcional)</label>
+                <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">DESCRIÇÃO (OPCIONAL)</label>
                 <textarea 
                   value={desc}
                   onChange={e => setDesc(e.target.value)}
-                  className="w-full bg-black border border-zinc-700 rounded p-3 text-white focus:border-emerald-500 outline-none h-24"
-                  placeholder="Sinopse ou notas gerais..."
+                  className="w-full bg-black border border-zinc-800 p-4 text-white focus:border-red-600 outline-none h-32 transition-colors placeholder:text-zinc-700 resize-none"
+                  placeholder="Detalhes sobre o filme..."
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-zinc-400 hover:text-white">Cancelar</button>
-                <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium">
-                  {editingProject ? 'Salvar Alterações' : 'Criar'}
+              <div className="flex justify-end gap-4 pt-2">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">Cancelar</button>
+                <button type="submit" className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 text-xs font-bold uppercase tracking-widest transition">
+                  {editingProject ? 'Salvar' : 'Criar'}
                 </button>
               </div>
             </form>
@@ -216,46 +217,50 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
       )}
 
       {projects.length === 0 ? (
-        <div className="text-center py-20 border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900/30">
-          <FolderOpen size={64} className="mx-auto text-zinc-700 mb-4" />
-          <h3 className="text-xl font-bold text-zinc-500">Nenhum projeto encontrado</h3>
-          <p className="text-zinc-600 mt-2">Crie seu primeiro projeto para começar a adicionar frames.</p>
+        <div className="flex flex-col items-center justify-center py-32 border border-dashed border-zinc-900 bg-zinc-950/50">
+          <div className="w-16 h-16 bg-zinc-900 flex items-center justify-center mb-6 rounded-full">
+             <Film size={32} className="text-zinc-700" />
+          </div>
+          <h3 className="text-xl font-bold text-white mb-2">NENHUM PROJETO ENCONTRADO</h3>
+          <p className="text-zinc-600 text-sm max-w-md text-center">O Monolito está vazio. Inicie sua jornada criativa agora.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {projects.map(project => (
             <div 
               key={project.id}
               onClick={() => onSelect(project)}
-              className="group bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 rounded-xl p-6 cursor-pointer transition-all hover:shadow-xl hover:shadow-emerald-900/10 relative"
+              className="group bg-zinc-950 border border-zinc-900 hover:border-red-600/50 p-8 cursor-pointer transition-all duration-300 relative overflow-hidden"
             >
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 group-hover:border-emerald-500/30 group-hover:bg-emerald-500/10 transition-colors">
-                  <Film className="text-zinc-400 group-hover:text-emerald-400" size={24} />
+              <div className="absolute top-0 left-0 w-1 h-full bg-red-600 transform -translate-x-1 group-hover:translate-x-0 transition-transform duration-300"></div>
+              
+              <div className="flex justify-between items-start mb-8">
+                <div className="text-zinc-700 group-hover:text-red-500 transition-colors duration-300">
+                  <Film size={24} />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
                     onClick={(e) => openEditModal(project, e)}
-                    className="text-zinc-600 hover:text-white p-2 rounded-full hover:bg-zinc-800 transition"
-                    title="Editar Projeto"
+                    className="text-zinc-500 hover:text-white transition"
+                    title="Editar"
                   >
-                    <Edit3 size={18} />
+                    <Edit3 size={16} />
                   </button>
                   <button 
                     onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
-                    className="text-zinc-600 hover:text-red-500 p-2 rounded-full hover:bg-zinc-800 transition"
-                    title="Excluir Projeto"
+                    className="text-zinc-500 hover:text-red-500 transition"
+                    title="Excluir"
                   >
-                    <Trash2 size={18} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
               
-              <h3 className="text-xl font-bold text-white mb-2 group-hover:text-emerald-400 transition-colors">{project.title}</h3>
-              <p className="text-zinc-500 text-sm line-clamp-2 h-10 mb-4">{project.description || "Sem descrição definida."}</p>
+              <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-red-500 transition-colors duration-300">{project.title}</h3>
+              <p className="text-zinc-500 text-sm line-clamp-2 h-10 mb-6 font-light">{project.description || "Sem descrição."}</p>
               
-              <div className="flex items-center gap-2 text-xs text-zinc-600 border-t border-zinc-800 pt-4 mt-auto">
-                <Calendar size={14} />
+              <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-700 uppercase tracking-widest border-t border-zinc-900 pt-4 mt-auto">
+                <Calendar size={12} />
                 <span>{new Date(project.created_at).toLocaleDateString()}</span>
               </div>
             </div>
@@ -310,53 +315,65 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col md:flex-row">
-        <div className="w-full md:w-1/2 p-6 bg-black flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-zinc-800 relative">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-950 border border-zinc-800 w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col md:flex-row overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900 z-10"></div>
+        
+        {/* Coluna Visual */}
+        <div className="w-full md:w-1/2 bg-black flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-zinc-900 relative group">
           {formData.imagePreview ? (
-            <img src={formData.imagePreview} alt="Preview" className="max-h-[300px] md:max-h-[500px] object-contain rounded-lg shadow-lg border border-zinc-800" />
+            <img src={formData.imagePreview} alt="Preview" className="w-full h-full object-contain p-8" />
           ) : (
-            <div className="text-zinc-500 flex flex-col items-center">
-              <ImageIcon size={48} className="mb-4 opacity-50" />
-              <p>Nenhuma imagem</p>
+            <div className="text-zinc-700 flex flex-col items-center">
+              <ImageIcon size={64} strokeWidth={1} className="mb-4" />
+              <p className="text-xs uppercase tracking-widest">Nenhuma imagem selecionada</p>
             </div>
           )}
-          <label className="mt-6 cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg border border-zinc-600 transition flex items-center gap-2">
+          <label className="absolute inset-0 flex items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
             <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-            <ImageIcon size={18} />
-            Escolher Frame (Original)
+            <div className="border border-red-600 px-6 py-3 text-red-500 text-xs font-bold uppercase tracking-widest hover:bg-red-600 hover:text-white transition">
+              {formData.imagePreview ? 'Trocar Imagem' : 'Selecionar Frame'}
+            </div>
           </label>
         </div>
 
-        <div className="w-full md:w-1/2 p-6 flex flex-col">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-white font-mono">{initialData ? 'EDITAR' : 'NOVO FRAME'}</h2>
-            <button onClick={onClose} className="text-zinc-400 hover:text-white"><X size={24} /></button>
+        {/* Coluna Dados */}
+        <div className="w-full md:w-1/2 p-8 flex flex-col bg-zinc-950 overflow-y-auto">
+          <div className="flex justify-between items-center mb-8 border-b border-zinc-900 pb-4">
+            <h2 className="text-xl font-bold text-white tracking-tight uppercase">
+              {initialData ? 'EDITAR FRAME' : 'NOVO FRAME'}
+            </h2>
+            <button onClick={onClose} className="text-zinc-500 hover:text-white transition"><X size={24} /></button>
           </div>
-          <form onSubmit={handleSubmit} className="flex-1 space-y-4">
+          
+          <form onSubmit={handleSubmit} className="flex-1 space-y-6">
             <div>
-              <label className="block text-xs font-mono text-zinc-400 mb-1">CENA / TÍTULO (Opcional)</label>
-              <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-white focus:border-emerald-500 outline-none" placeholder="Cena 1" />
+              <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">CENA / TÍTULO</label>
+              <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none transition-colors" placeholder="Cena 1 - O Monolito" />
             </div>
+            
             <div>
-              <label className="block text-xs font-mono text-zinc-400 mb-1">DESCRIÇÃO (Opcional)</label>
-              <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-white focus:border-emerald-500 outline-none h-20" />
+              <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">DESCRIÇÃO</label>
+              <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none h-24 resize-none transition-colors" />
             </div>
+            
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-mono text-zinc-400 mb-1">MOVIMENTO (Opcional)</label>
-                <input type="text" value={formData.cameraMove} onChange={e => setFormData({...formData, cameraMove: e.target.value})} className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-zinc-300 focus:border-emerald-500 outline-none text-sm" placeholder="Zoom In" />
+                <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">MOVIMENTO</label>
+                <input type="text" value={formData.cameraMove} onChange={e => setFormData({...formData, cameraMove: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none transition-colors text-sm" placeholder="ZOOM IN" />
               </div>
             </div>
+            
             <div>
-              <label className="block text-xs font-mono text-emerald-400 mb-1">PROMPT (IA) (Opcional)</label>
-              <textarea value={formData.prompt} onChange={e => setFormData({...formData, prompt: e.target.value})} className="w-full bg-zinc-950 border border-emerald-900/50 rounded p-2 text-emerald-100 focus:border-emerald-500 outline-none h-24 text-sm font-mono" />
+              <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">PROMPT ORIGINAL (IA)</label>
+              <textarea value={formData.prompt} onChange={e => setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-zinc-300 font-mono text-xs focus:border-red-600 outline-none h-32 resize-none transition-colors" />
             </div>
-            <div className="pt-4 flex justify-end gap-3">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-zinc-400 hover:text-white">Cancelar</button>
-              <button type="submit" disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50">
-                {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                Salvar (Original)
+            
+            <div className="pt-6 flex justify-end gap-4 border-t border-zinc-900 mt-auto">
+              <button type="button" onClick={onClose} className="px-6 py-3 text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">Cancelar</button>
+              <button type="submit" disabled={isSaving} className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 text-xs font-bold uppercase tracking-widest transition disabled:opacity-50 flex items-center gap-2">
+                {isSaving && <Loader2 className="animate-spin" size={14} />}
+                Salvar
               </button>
             </div>
           </form>
@@ -376,11 +393,11 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadName = `cineboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
+  const downloadName = `brickboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
 
   return (
     <div 
-      className="group relative bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all duration-300 hover:shadow-xl flex flex-col h-full cursor-grab active:cursor-grabbing"
+      className="group relative bg-zinc-950 border border-zinc-900 hover:border-red-600 transition-all duration-300 flex flex-col h-full cursor-grab active:cursor-grabbing"
       draggable
       onDragStart={(e) => onDragStart(e, index)}
       onDragEnter={(e) => onDragEnter(e, index)}
@@ -389,54 +406,55 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
     >
       <div className="relative aspect-video bg-black overflow-hidden" onClick={() => onEdit(data)}>
         {data.image_base64 ? (
-          <img src={data.image_base64} alt={data.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 select-none pointer-events-none" />
+          // REMOVIDO GRAYSCALE AQUI
+          <img src={data.image_base64} alt={data.title} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500 select-none pointer-events-none" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-zinc-700"><Film size={48} /></div>
+          <div className="w-full h-full flex items-center justify-center text-zinc-800"><Film size={48} strokeWidth={1} /></div>
         )}
-        <div className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-xs font-mono px-2 py-1 rounded z-10">
-          #{index + 1}
+        
+        <div className="absolute top-0 left-0 bg-red-600 text-white text-[10px] font-bold px-3 py-1 z-10 shadow-lg">
+          #{String(index + 1).padStart(2, '0')}
         </div>
         
-        {/* Grip Icon para indicar Drag */}
-        <div className="absolute top-2 right-2 text-white/50 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-black/30 rounded p-1">
-            <GripVertical size={16} />
+        <div className="absolute top-2 right-2 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 drop-shadow-md">
+            <GripVertical size={20} />
         </div>
 
         {/* Actions Overlay */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 z-20">
-            <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-2 bg-white text-black rounded-full hover:bg-emerald-500 hover:text-white transition" title="Editar"><Edit3 size={20} /></button>
-            <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition" title="Excluir"><Trash2 size={20} /></button>
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
+            <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-3 border border-white text-white hover:bg-white hover:text-black transition rounded-full" title="Editar"><Edit3 size={18} /></button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-red-500 hover:text-red-500 transition rounded-full" title="Excluir"><Trash2 size={18} /></button>
         </div>
       </div>
       
-      <div className="p-4 flex flex-col flex-1">
-        <div className="flex justify-between items-start mb-2 min-h-[24px]">
-            <h3 className={`font-bold truncate pr-2 ${data.title ? 'text-zinc-100' : 'text-zinc-600 italic'}`}>
-              {data.title || "Sem título"}
+      <div className="p-5 flex flex-col flex-1">
+        <div className="flex justify-between items-start mb-3 min-h-[24px]">
+            <h3 className={`font-bold truncate pr-2 uppercase tracking-tight ${data.title ? 'text-white' : 'text-zinc-700'}`}>
+              {data.title || "SEM TÍTULO"}
             </h3>
-            {data.camera_move && <span className="text-[10px] uppercase tracking-wider bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">{data.camera_move}</span>}
+            {data.camera_move && <span className="text-[9px] font-bold uppercase tracking-widest bg-zinc-900 text-red-500 px-2 py-0.5 border border-zinc-800 whitespace-nowrap">{data.camera_move}</span>}
         </div>
         
-        <p className="text-zinc-400 text-xs line-clamp-2 mb-3 h-8">{data.description || ""}</p>
+        <p className="text-zinc-500 text-xs line-clamp-2 mb-4 h-8 font-light">{data.description || ""}</p>
         
-        <div className="mt-auto pt-3 border-t border-zinc-800">
+        <div className="mt-auto pt-4 border-t border-zinc-900">
              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                    <a 
                      href={data.image_base64} 
                      download={downloadName}
-                     className="text-zinc-500 hover:text-emerald-400 transition flex items-center gap-1 text-xs"
+                     className="text-zinc-600 hover:text-red-500 transition flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold"
                      title="Baixar Original"
                      onClick={(e) => e.stopPropagation()}
                    >
-                     <Download size={14} /> 
-                     <span className="hidden sm:inline">Original</span>
+                     <Download size={12} /> 
+                     <span className="hidden sm:inline">Download</span>
                    </a>
                 </div>
 
                 {data.prompt && (
-                  <button onClick={handleCopyPrompt} className={`text-xs flex items-center gap-1 ${copied ? 'text-green-400' : 'text-zinc-500 hover:text-white'} transition`}>
-                      {copied ? 'Copiado!' : <><Copy size={12} /> Copiar Prompt</>}
+                  <button onClick={handleCopyPrompt} className={`text-[10px] uppercase tracking-widest font-bold flex items-center gap-1 ${copied ? 'text-red-500' : 'text-zinc-600 hover:text-white'} transition`}>
+                      {copied ? 'COPIADO' : <><Copy size={12} /> PROMPT</>}
                   </button>
                 )}
              </div>
@@ -450,12 +468,10 @@ export default function App() {
   const [supabase, setSupabase] = useState(null);
   const [isLibLoaded, setIsLibLoaded] = useState(false);
   
-  // Dados
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null); 
   const [frames, setFrames] = useState([]);
   
-  // UI States
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingFrame, setEditingFrame] = useState(null);
@@ -465,7 +481,6 @@ export default function App() {
   const [carouselOpen, setCarouselOpen] = useState(false);
   const [carouselStartIndex, setCarouselStartIndex] = useState(0);
 
-  // Drag References
   const dragItem = useRef();
   const dragOverItem = useRef();
 
@@ -496,8 +511,6 @@ export default function App() {
     }
   }, [isLibLoaded]);
 
-  // --- PROJETOS ---
-  
   useEffect(() => {
     if (!supabase) return;
     fetchProjects();
@@ -526,7 +539,6 @@ export default function App() {
     } catch (error) { alert("Erro ao criar projeto: " + error.message); }
   };
 
-  // NOVA FUNÇÃO: Atualizar Projeto
   const handleUpdateProject = async (id, projectData) => {
     if (!supabase) return;
     try {
@@ -551,8 +563,6 @@ export default function App() {
     }
   };
 
-  // --- FRAMES & DRAG AND DROP ---
-
   useEffect(() => {
     if (!supabase || !currentProject) return;
     fetchFrames();
@@ -564,7 +574,6 @@ export default function App() {
     if (!currentProject) return;
     setLoading(true);
     try {
-      // Ordena por 'order_index' e depois por data de criação como fallback
       const { data, error } = await supabase
         .from('sbframes')
         .select('*')
@@ -589,35 +598,24 @@ export default function App() {
   const handleDragEnter = (e, position) => {
     e.preventDefault();
     dragOverItem.current = position;
-    
-    // Reordenação Visual Instantânea
     const copyListItems = [...frames];
     const dragItemContent = copyListItems[dragItem.current];
     copyListItems.splice(dragItem.current, 1);
     copyListItems.splice(dragOverItem.current, 0, dragItemContent);
-    
-    // Precisamos resetar a referência do dragItem para o novo índice para continuar arrastando corretamente
     dragItem.current = position;
-    
     setFrames(copyListItems);
   };
 
   const handleDragEnd = async () => {
     dragItem.current = null;
     dragOverItem.current = null;
-
-    // Salvar Nova Ordem no Supabase
     if (!supabase) return;
-
-    // Prepara o payload com os novos índices
     const updates = frames.map((frame, index) => ({
         id: frame.id,
         order_index: index,
-        project_id: currentProject.id, // Necessário para o upsert não reclamar de constraints
-        // Mantemos os campos obrigatórios para o upsert funcionar suave
+        project_id: currentProject.id, 
         updated_at: new Date()
     }));
-
     try {
         const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' });
         if (error) throw error;
@@ -638,7 +636,6 @@ export default function App() {
       let imageBase64 = formData.imagePreview;
       if (formData.image) imageBase64 = await convertFileToBase64(formData.image);
 
-      // Se for novo frame, coloca no final da lista
       const newOrderIndex = frames.length;
 
       const frameData = {
@@ -681,26 +678,16 @@ export default function App() {
     }
   };
 
-  // --- RENDERIZAÇÃO ---
-
   if (!isLibLoaded || (loading && !projects.length && !currentProject)) {
     return <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-zinc-500">
-      <Loader2 className="animate-spin text-emerald-500" size={48} />
-      <p>Carregando sistema...</p>
+      <Loader2 className="animate-spin text-red-600" size={48} />
+      <p className="text-xs uppercase tracking-widest text-red-600">Carregando BrickBoard...</p>
     </div>;
   }
 
   if (!currentProject) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans">
-        <header className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur border-b border-zinc-800 px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Film className="text-white" size={18} />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-white">CineBoard <span className="text-emerald-500">Projetos</span></h1>
-          </div>
-        </header>
+      <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white">
         <ProjectList 
           projects={projects} 
           onSelect={setCurrentProject} 
@@ -713,47 +700,51 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-emerald-500/30">
-      <header className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur border-b border-zinc-800 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setCurrentProject(null)} className="p-2 bg-zinc-900 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition" title="Voltar">
-            <ChevronLeft size={20} />
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white">
+      <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
+        <div className="flex items-center gap-6">
+          <button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar">
+            <ChevronLeft size={24} />
           </button>
           <div className="flex flex-col">
-            <h1 className="text-xl font-bold tracking-tight text-white leading-none">{currentProject.title}</h1>
-            <span className="text-xs text-zinc-500 mt-1">Modo Storyboard</span>
+            <h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1>
+            <span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
            <button 
              onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }}
-             className="hidden md:flex bg-zinc-800 hover:bg-emerald-600 hover:text-white text-zinc-300 px-4 py-2 rounded-lg font-medium items-center gap-2 transition"
+             className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"
            >
-             <Play size={18} /> <span className="text-sm">Apresentar</span>
+             <Play size={14} /> Apresentar
            </button>
 
-           <div className="hidden md:flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
-                <button onClick={() => setViewMode('grid')} className={`p-2 rounded ${viewMode === 'grid' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}><Maximize2 size={18} /></button>
-                <button onClick={() => setViewMode('list')} className={`p-2 rounded ${viewMode === 'list' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}><Move size={18} /></button>
+           <div className="hidden md:flex bg-zinc-950 border border-zinc-800">
+                <button onClick={() => setViewMode('grid')} className={`p-3 ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Maximize2 size={18} /></button>
+                <button onClick={() => setViewMode('list')} className={`p-3 ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Move size={18} /></button>
            </div>
            
-           <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow-lg shadow-emerald-900/20">
-             <Plus size={18} /> <span className="hidden md:inline">Novo Frame</span>
+           <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]">
+             <Plus size={16} /> <span className="hidden md:inline">Novo Frame</span>
            </button>
         </div>
       </header>
 
-      <main className="p-6 max-w-[1600px] mx-auto">
+      <main className="p-8 max-w-[1800px] mx-auto">
         {frames.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900/50">
-            <Film size={64} className="text-zinc-700 mb-4" />
-            <h2 className="text-2xl font-bold text-zinc-500 mb-2">Projeto Vazio</h2>
-            <p className="text-zinc-600 mb-8 max-w-md text-center">Adicione os frames gerados pela IA.</p>
-            <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-lg font-medium transition">Criar Primeiro Frame</button>
+          <div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950">
+            <div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6">
+                <Film size={40} className="text-zinc-700" strokeWidth={1} />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2>
+            <p className="text-zinc-600 text-sm mb-8 text-center max-w-md">O Monolito aguarda seus frames.</p>
+            <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-4 font-bold uppercase tracking-widest hover:bg-red-700 transition">
+                Adicionar Frame Inicial
+            </button>
           </div>
         ) : (
-          <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
+          <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : 'grid-cols-1'}`}>
             {frames.map((frame, index) => (
               <FrameCard 
                 key={frame.id} 
@@ -769,13 +760,13 @@ export default function App() {
             
             <button
               onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }}
-              className="group relative bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-xl overflow-hidden hover:border-emerald-500/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[300px]"
+              className="group relative bg-zinc-950 border border-dashed border-zinc-800 hover:border-red-600/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[350px]"
             >
               <div className="w-full h-full flex flex-col items-center justify-center">
-                 <div className="w-16 h-16 rounded-full bg-zinc-800 group-hover:bg-emerald-500/20 flex items-center justify-center transition-colors shadow-lg mb-4">
-                    <Plus className="text-zinc-500 group-hover:text-emerald-500" size={32} />
+                 <div className="w-16 h-16 bg-zinc-900 group-hover:bg-red-600 flex items-center justify-center transition-colors mb-6 rounded-full group-hover:shadow-[0_0_15px_rgba(220,38,38,0.5)]">
+                    <Plus className="text-zinc-500 group-hover:text-white" size={32} />
                  </div>
-                 <span className="text-zinc-500 font-medium group-hover:text-emerald-400">Adicionar Frame</span>
+                 <span className="text-zinc-500 font-bold text-xs uppercase tracking-widest group-hover:text-red-500 transition-colors">Adicionar Frame</span>
               </div>
             </button>
           </div>
