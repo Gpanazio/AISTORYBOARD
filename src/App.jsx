@@ -25,35 +25,6 @@ import {
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
 
-// --- SQL NECESSÁRIO NO SUPABASE ---
-/*
-  -- Tabela de Projetos (Já criada por você)
-  create table sbprojects (
-    id uuid default gen_random_uuid() primary key,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    title text not null,
-    description text
-  );
-
-  -- Tabela de Frames (Com prefixo sb)
-  create table sbframes (
-    id uuid default gen_random_uuid() primary key,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    title text,
-    description text,
-    prompt text,
-    camera_move text,
-    image_base64 text,
-    user_id uuid, -- Opcional se não usar auth estrito
-    project_id uuid references sbprojects(id) on delete cascade
-  );
-  
-  -- Liberar acesso (Se não usar Auth RLS)
-  alter table sbprojects disable row level security;
-  alter table sbframes disable row level security;
-*/
-
 // --- UTILITÁRIOS ---
 const compressImage = (file) => {
   return new Promise((resolve, reject) => {
@@ -86,6 +57,7 @@ const compressImage = (file) => {
 };
 
 const copyToClipboard = (text) => {
+  if (!text) return; // Não tenta copiar se estiver vazio
   const textArea = document.createElement("textarea");
   textArea.value = text;
   document.body.appendChild(textArea);
@@ -259,7 +231,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
           <label className="mt-6 cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg border border-zinc-600 transition flex items-center gap-2">
             <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
             <ImageIcon size={18} />
-            Escolher Frame
+            Escolher Frame (Obrigatório)
           </label>
         </div>
 
@@ -270,21 +242,21 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
           </div>
           <form onSubmit={handleSubmit} className="flex-1 space-y-4">
             <div>
-              <label className="block text-xs font-mono text-zinc-400 mb-1">CENA / TÍTULO</label>
-              <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-white focus:border-emerald-500 outline-none" placeholder="Cena 1" required />
+              <label className="block text-xs font-mono text-zinc-400 mb-1">CENA / TÍTULO (Opcional)</label>
+              <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-white focus:border-emerald-500 outline-none" placeholder="Cena 1" />
             </div>
             <div>
-              <label className="block text-xs font-mono text-zinc-400 mb-1">DESCRIÇÃO</label>
+              <label className="block text-xs font-mono text-zinc-400 mb-1">DESCRIÇÃO (Opcional)</label>
               <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-white focus:border-emerald-500 outline-none h-20" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-mono text-zinc-400 mb-1">MOVIMENTO</label>
+                <label className="block text-xs font-mono text-zinc-400 mb-1">MOVIMENTO (Opcional)</label>
                 <input type="text" value={formData.cameraMove} onChange={e => setFormData({...formData, cameraMove: e.target.value})} className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-zinc-300 focus:border-emerald-500 outline-none text-sm" placeholder="Zoom In" />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-mono text-emerald-400 mb-1">PROMPT (IA)</label>
+              <label className="block text-xs font-mono text-emerald-400 mb-1">PROMPT (IA) (Opcional)</label>
               <textarea value={formData.prompt} onChange={e => setFormData({...formData, prompt: e.target.value})} className="w-full bg-zinc-950 border border-emerald-900/50 rounded p-2 text-emerald-100 focus:border-emerald-500 outline-none h-24 text-sm font-mono" />
             </div>
             <div className="pt-4 flex justify-end gap-3">
@@ -304,6 +276,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
 const FrameCard = ({ data, onDelete, onEdit, index }) => {
   const [copied, setCopied] = useState(false);
   const handleCopyPrompt = () => {
+    if (!data.prompt) return;
     copyToClipboard(data.prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -324,17 +297,21 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
         </div>
       </div>
       <div className="p-4 flex flex-col flex-1">
-        <div className="flex justify-between items-start mb-2">
-            <h3 className="font-bold text-zinc-100 truncate pr-2">{data.title}</h3>
+        <div className="flex justify-between items-start mb-2 min-h-[24px]">
+            <h3 className={`font-bold truncate pr-2 ${data.title ? 'text-zinc-100' : 'text-zinc-600 italic'}`}>
+              {data.title || "Sem título"}
+            </h3>
             {data.camera_move && <span className="text-[10px] uppercase tracking-wider bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded border border-zinc-700 whitespace-nowrap">{data.camera_move}</span>}
         </div>
-        <p className="text-zinc-400 text-xs line-clamp-2 mb-3 h-8">{data.description || "Sem descrição."}</p>
+        <p className="text-zinc-400 text-xs line-clamp-2 mb-3 h-8">{data.description || ""}</p>
         <div className="mt-auto pt-3 border-t border-zinc-800">
              <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono text-emerald-400 uppercase">Prompt IA</span>
-                <button onClick={handleCopyPrompt} className={`text-xs flex items-center gap-1 ${copied ? 'text-green-400' : 'text-zinc-500 hover:text-white'} transition`}>
-                    {copied ? 'Copiado!' : <><Copy size={12} /> Copiar</>}
-                </button>
+                {data.prompt && (
+                  <button onClick={handleCopyPrompt} className={`text-xs flex items-center gap-1 ${copied ? 'text-green-400' : 'text-zinc-500 hover:text-white'} transition`}>
+                      {copied ? 'Copiado!' : <><Copy size={12} /> Copiar</>}
+                  </button>
+                )}
              </div>
         </div>
       </div>
@@ -347,9 +324,9 @@ export default function App() {
   
   // Estado para Projetos
   const [projects, setProjects] = useState([]);
-  const [currentProject, setCurrentProject] = useState(null); // Se null, mostra lista de projetos. Se objeto, mostra board.
+  const [currentProject, setCurrentProject] = useState(null); 
 
-  // Estado para Frames (Board)
+  // Estado para Frames
   const [frames, setFrames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -396,7 +373,6 @@ export default function App() {
     if (!supabase) return;
     fetchProjects();
 
-    // Listener para novos projetos
     const channel = supabase
       .channel('sbprojects_channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, () => {
@@ -419,7 +395,6 @@ export default function App() {
       setLoading(false);
     } catch (error) {
       console.error("Erro ao buscar projetos:", error);
-      // Não mostra erro na UI se for só tabela inexistente, para não assustar no primeiro uso
       if (!error.message.includes('relation "sbprojects" does not exist')) {
         setErrorMsg(error.message);
       }
@@ -434,7 +409,7 @@ export default function App() {
       if (error) throw error;
       fetchProjects();
     } catch (error) {
-      alert("Erro ao criar projeto: " + error.message + "\n\nVerifique se criou a tabela 'sbprojects' no Supabase.");
+      alert("Erro ao criar projeto: " + error.message);
     }
   };
 
@@ -486,6 +461,13 @@ export default function App() {
 
   const handleSaveFrame = async (formData) => {
     if (!supabase || !currentProject) return;
+    
+    // VALIDAÇÃO: Única coisa obrigatória é a imagem (seja nova ou preview existente)
+    if (!formData.image && !formData.imagePreview) {
+      alert("A imagem é obrigatória para criar um frame.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       let imageBase64 = formData.imagePreview;
@@ -494,12 +476,12 @@ export default function App() {
       }
 
       const frameData = {
-        title: formData.title,
-        description: formData.description,
-        prompt: formData.prompt,
-        camera_move: formData.cameraMove, 
+        title: formData.title || '', // Garante string vazia se undefined
+        description: formData.description || '',
+        prompt: formData.prompt || '',
+        camera_move: formData.cameraMove || '', 
         image_base64: imageBase64,
-        project_id: currentProject.id, // VINCULA AO PROJETO ATUAL
+        project_id: currentProject.id, 
         updated_at: new Date()
       };
 
