@@ -22,18 +22,13 @@ import {
   Download,
   Play,
   GripVertical,
-  LayoutTemplate // Ícone para "Definir como Capa"
+  LayoutTemplate
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
 // COLOQUE SUAS CHAVES AQUI
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
-
-// --- SQL NECESSÁRIO NO SUPABASE ---
-/*
-  alter table sbprojects add column cover_image text;
-*/
 
 // --- UTILITÁRIOS ---
 
@@ -158,7 +153,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
     setTitle(project.title);
     setDesc(project.description || '');
     setCoverPreview(project.cover_image || null);
-    setCoverImage(null); // Reset new file input
+    setCoverImage(null);
     setIsModalOpen(true);
   };
 
@@ -166,7 +161,6 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
     const file = e.target.files[0];
     if (file) {
       setCoverImage(file);
-      // Create local preview
       const reader = new FileReader();
       reader.onloadend = () => setCoverPreview(reader.result);
       reader.readAsDataURL(file);
@@ -177,7 +171,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
     e.preventDefault();
     if (!title.trim()) return;
     
-    let coverBase64 = editingProject?.cover_image; // Keep existing if not changed
+    let coverBase64 = editingProject?.cover_image;
 
     if (coverImage) {
       coverBase64 = await convertFileToBase64(coverImage);
@@ -220,7 +214,6 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
               {editingProject ? 'EDITAR PROJETO' : 'NOVO PROJETO'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Capa Upload */}
               <div>
                  <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">CAPA DO PROJETO</label>
                  <div className="relative w-full h-32 bg-black border border-zinc-800 flex items-center justify-center overflow-hidden group cursor-pointer hover:border-red-600 transition-colors">
@@ -288,7 +281,6 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
               onClick={() => onSelect(project)}
               className="group bg-zinc-950 border border-zinc-900 hover:border-red-600/50 cursor-pointer transition-all duration-300 relative overflow-hidden min-h-[250px] flex flex-col"
             >
-              {/* Capa de Fundo */}
               {project.cover_image && (
                   <div className="absolute inset-0 z-0">
                       <img 
