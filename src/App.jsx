@@ -21,13 +21,19 @@ import {
   Calendar,
   Download,
   Play,
-  GripVertical
+  GripVertical,
+  LayoutTemplate // Ícone para "Definir como Capa"
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
 // COLOQUE SUAS CHAVES AQUI
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
+
+// --- SQL NECESSÁRIO NO SUPABASE ---
+/*
+  alter table sbprojects add column cover_image text;
+*/
 
 // --- UTILITÁRIOS ---
 
@@ -134,11 +140,15 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
   const [editingProject, setEditingProject] = useState(null);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
+  const [coverImage, setCoverImage] = useState(null);
+  const [coverPreview, setCoverPreview] = useState(null);
 
   const openCreateModal = () => {
     setEditingProject(null);
     setTitle('');
     setDesc('');
+    setCoverImage(null);
+    setCoverPreview(null);
     setIsModalOpen(true);
   };
 
@@ -147,17 +157,42 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
     setEditingProject(project);
     setTitle(project.title);
     setDesc(project.description || '');
+    setCoverPreview(project.cover_image || null);
+    setCoverImage(null); // Reset new file input
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleCoverChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setCoverImage(file);
+      // Create local preview
+      const reader = new FileReader();
+      reader.onloadend = () => setCoverPreview(reader.result);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
     
+    let coverBase64 = editingProject?.cover_image; // Keep existing if not changed
+
+    if (coverImage) {
+      coverBase64 = await convertFileToBase64(coverImage);
+    }
+
+    const projectData = { 
+        title, 
+        description: desc,
+        cover_image: coverBase64
+    };
+    
     if (editingProject) {
-      onUpdate(editingProject.id, { title, description: desc });
+      onUpdate(editingProject.id, projectData);
     } else {
-      onCreate({ title, description: desc });
+      onCreate(projectData);
     }
     setIsModalOpen(false);
   };
@@ -179,12 +214,33 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md p-8 shadow-2xl relative">
+          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900"></div>
             <h2 className="text-2xl font-bold text-white mb-6 tracking-tight">
               {editingProject ? 'EDITAR PROJETO' : 'NOVO PROJETO'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Capa Upload */}
+              <div>
+                 <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">CAPA DO PROJETO</label>
+                 <div className="relative w-full h-32 bg-black border border-zinc-800 flex items-center justify-center overflow-hidden group cursor-pointer hover:border-red-600 transition-colors">
+                    {coverPreview ? (
+                        <>
+                            <img src={coverPreview} alt="Cover Preview" className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-xs font-bold text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md">Trocar Imagem</span>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex flex-col items-center text-zinc-700 group-hover:text-red-600 transition-colors">
+                            <ImageIcon size={24} className="mb-2" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">Upload Capa</span>
+                        </div>
+                    )}
+                    <input type="file" accept="image/*" onChange={handleCoverChange} className="absolute inset-0 opacity-0 cursor-pointer" />
+                 </div>
+              </div>
+
               <div>
                 <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">TÍTULO</label>
                 <input 
@@ -201,7 +257,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
                 <textarea 
                   value={desc}
                   onChange={e => setDesc(e.target.value)}
-                  className="w-full bg-black border border-zinc-800 p-4 text-white focus:border-red-600 outline-none h-32 transition-colors placeholder:text-zinc-700 resize-none"
+                  className="w-full bg-black border border-zinc-800 p-4 text-white focus:border-red-600 outline-none h-24 transition-colors placeholder:text-zinc-700 resize-none"
                   placeholder="Detalhes sobre o filme..."
                 />
               </div>
@@ -230,38 +286,54 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
             <div 
               key={project.id}
               onClick={() => onSelect(project)}
-              className="group bg-zinc-950 border border-zinc-900 hover:border-red-600/50 p-8 cursor-pointer transition-all duration-300 relative overflow-hidden"
+              className="group bg-zinc-950 border border-zinc-900 hover:border-red-600/50 cursor-pointer transition-all duration-300 relative overflow-hidden min-h-[250px] flex flex-col"
             >
-              <div className="absolute top-0 left-0 w-1 h-full bg-red-600 transform -translate-x-1 group-hover:translate-x-0 transition-transform duration-300"></div>
+              {/* Capa de Fundo */}
+              {project.cover_image && (
+                  <div className="absolute inset-0 z-0">
+                      <img 
+                        src={project.cover_image} 
+                        alt="Cover" 
+                        className="w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-500 grayscale group-hover:grayscale-0" 
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent"></div>
+                  </div>
+              )}
+
+              <div className="absolute top-0 left-0 w-1 h-full bg-red-600 transform -translate-x-1 group-hover:translate-x-0 transition-transform duration-300 z-20"></div>
               
-              <div className="flex justify-between items-start mb-8">
-                <div className="text-zinc-700 group-hover:text-red-500 transition-colors duration-300">
-                  <Film size={24} />
-                </div>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={(e) => openEditModal(project, e)}
-                    className="text-zinc-500 hover:text-white transition"
-                    title="Editar"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
-                    className="text-zinc-500 hover:text-red-500 transition"
-                    title="Excluir"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-              
-              <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-red-500 transition-colors duration-300">{project.title}</h3>
-              <p className="text-zinc-500 text-sm line-clamp-2 h-10 mb-6 font-light">{project.description || "Sem descrição."}</p>
-              
-              <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-700 uppercase tracking-widest border-t border-zinc-900 pt-4 mt-auto">
-                <Calendar size={12} />
-                <span>{new Date(project.created_at).toLocaleDateString()}</span>
+              <div className="relative z-10 p-8 flex flex-col h-full">
+                  <div className="flex justify-between items-start mb-auto">
+                    <div className={`transition-colors duration-300 ${project.cover_image ? 'text-white' : 'text-zinc-700 group-hover:text-red-500'}`}>
+                      <Film size={24} />
+                    </div>
+                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => openEditModal(project, e)}
+                        className="text-zinc-400 hover:text-white transition bg-black/50 p-2 rounded-full backdrop-blur-sm"
+                        title="Editar"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
+                        className="text-zinc-400 hover:text-red-500 transition bg-black/50 p-2 rounded-full backdrop-blur-sm"
+                        title="Excluir"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-8">
+                      <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-red-500 transition-colors duration-300 drop-shadow-md">{project.title}</h3>
+                      <p className="text-zinc-400 text-sm line-clamp-2 h-10 mb-6 font-light">{project.description || "Sem descrição."}</p>
+                      
+                      <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 uppercase tracking-widest border-t border-zinc-800/50 pt-4">
+                        <Calendar size={12} />
+                        <span>{new Date(project.created_at).toLocaleDateString()}</span>
+                      </div>
+                  </div>
               </div>
             </div>
           ))}
@@ -383,7 +455,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
   );
 };
 
-const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd }) => {
+const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd, onSetCover }) => {
   const [copied, setCopied] = useState(false);
   
   const handleCopyPrompt = () => {
@@ -422,6 +494,7 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
         {/* Actions Overlay */}
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
             <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-3 border border-white text-white hover:bg-white hover:text-black transition rounded-full" title="Editar"><Edit3 size={18} /></button>
+            <button onClick={(e) => { e.stopPropagation(); onSetCover(data); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-white hover:text-white transition rounded-full" title="Definir como Capa"><LayoutTemplate size={18} /></button>
             <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-red-500 hover:text-red-500 transition rounded-full" title="Excluir"><Trash2 size={18} /></button>
         </div>
       </div>
@@ -546,6 +619,19 @@ export default function App() {
       fetchProjects();
     } catch (error) {
       alert("Erro ao atualizar projeto: " + error.message);
+    }
+  };
+
+  const handleSetCover = async (frame) => {
+    if (!supabase || !currentProject) return;
+    if (window.confirm("Definir este frame como capa do projeto?")) {
+        try {
+            const { error } = await supabase.from('sbprojects').update({ cover_image: frame.image_base64 }).eq('id', currentProject.id);
+            if (error) throw error;
+            alert("Capa atualizada com sucesso!");
+        } catch (error) {
+            alert("Erro ao definir capa: " + error.message);
+        }
     }
   };
 
@@ -690,7 +776,7 @@ export default function App() {
         <ProjectList 
           projects={projects} 
           onSelect={(project) => {
-             setLoading(true); // Evita o flash de "projeto vazio"
+             setLoading(true); 
              setCurrentProject(project);
           }} 
           onCreate={handleCreateProject} 
@@ -762,6 +848,7 @@ export default function App() {
                 data={frame} 
                 onDelete={handleDeleteFrame} 
                 onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }}
+                onSetCover={handleSetCover}
                 onDragStart={handleDragStart}
                 onDragEnter={handleDragEnter}
                 onDragEnd={handleDragEnd}
