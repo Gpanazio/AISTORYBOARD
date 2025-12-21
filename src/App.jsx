@@ -13,7 +13,11 @@ import {
   Maximize2,
   LogOut,
   AlertTriangle,
-  UserX
+  FolderPlus,
+  FolderOpen,
+  ChevronLeft,
+  LayoutGrid,
+  Calendar
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -21,6 +25,34 @@ import {
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
 
+// --- SQL NECESSÁRIO NO SUPABASE ---
+/*
+  -- Tabela de Projetos (Já criada por você)
+  create table sbprojects (
+    id uuid default gen_random_uuid() primary key,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    title text not null,
+    description text
+  );
+
+  -- Tabela de Frames (Com prefixo sb)
+  create table sbframes (
+    id uuid default gen_random_uuid() primary key,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    title text,
+    description text,
+    prompt text,
+    camera_move text,
+    image_base64 text,
+    user_id uuid, -- Opcional se não usar auth estrito
+    project_id uuid references sbprojects(id) on delete cascade
+  );
+  
+  -- Liberar acesso (Se não usar Auth RLS)
+  alter table sbprojects disable row level security;
+  alter table sbframes disable row level security;
+*/
 
 // --- UTILITÁRIOS ---
 const compressImage = (file) => {
@@ -64,72 +96,107 @@ const copyToClipboard = (text) => {
 
 // --- COMPONENTES ---
 
-const AuthScreen = ({ client, onGuestLogin }) => {
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+const ProjectList = ({ projects, onSelect, onCreate, onDelete }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
 
-  const handleMagicLink = async (e) => {
+  const handleCreate = (e) => {
     e.preventDefault();
-    if (!client) return;
-    setLoading(true);
-    const { error } = await client.auth.signInWithOtp({ email });
-    if (error) setMessage('Erro: ' + error.message);
-    else setMessage('Cheque seu email para o link mágico!');
-    setLoading(false);
+    if (!newTitle.trim()) return;
+    onCreate({ title: newTitle, description: newDesc });
+    setNewTitle('');
+    setNewDesc('');
+    setIsCreating(false);
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-950 p-4">
-      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-xl p-8 shadow-2xl">
-        <div className="flex justify-center mb-6">
-          <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center">
-            <Film className="text-white" size={24} />
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="flex justify-between items-center mb-10">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Meus Projetos</h1>
+          <p className="text-zinc-400">Gerencie seus filmes e storyboards</p>
+        </div>
+        <button 
+          onClick={() => setIsCreating(true)}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-900/20"
+        >
+          <FolderPlus size={20} /> Novo Projeto
+        </button>
+      </div>
+
+      {isCreating && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
+            <h2 className="text-xl font-bold text-white mb-4">Criar Novo Projeto</h2>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono text-zinc-400 mb-1">NOME DO PROJETO</label>
+                <input 
+                  autoFocus
+                  type="text" 
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  className="w-full bg-black border border-zinc-700 rounded p-3 text-white focus:border-emerald-500 outline-none"
+                  placeholder="Ex: Curta Metragem Sci-Fi"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-mono text-zinc-400 mb-1">DESCRIÇÃO (Opcional)</label>
+                <textarea 
+                  value={newDesc}
+                  onChange={e => setNewDesc(e.target.value)}
+                  className="w-full bg-black border border-zinc-700 rounded p-3 text-white focus:border-emerald-500 outline-none h-24"
+                  placeholder="Sinopse ou notas gerais..."
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setIsCreating(false)} className="px-4 py-2 text-zinc-400 hover:text-white">Cancelar</button>
+                <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium">Criar</button>
+              </div>
+            </form>
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-center text-white mb-2">CineBoard AI</h2>
-        <p className="text-zinc-500 text-center mb-8">Login via Supabase</p>
+      )}
 
-        <form onSubmit={handleMagicLink} className="space-y-4">
-          <div>
-            <label className="block text-xs font-mono text-zinc-400 mb-1">EMAIL (OPCIONAL)</label>
-            <input 
-              type="email" 
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="w-full bg-black border border-zinc-700 rounded p-3 text-white focus:border-emerald-500 outline-none"
-              placeholder="seu@email.com"
-            />
-          </div>
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition disabled:opacity-50"
-          >
-            {loading ? 'Enviando...' : 'Entrar com Magic Link'}
-          </button>
-          
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-zinc-800"></div>
+      {projects.length === 0 ? (
+        <div className="text-center py-20 border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900/30">
+          <FolderOpen size={64} className="mx-auto text-zinc-700 mb-4" />
+          <h3 className="text-xl font-bold text-zinc-500">Nenhum projeto encontrado</h3>
+          <p className="text-zinc-600 mt-2">Crie seu primeiro projeto para começar a adicionar frames.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {projects.map(project => (
+            <div 
+              key={project.id}
+              onClick={() => onSelect(project)}
+              className="group bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 rounded-xl p-6 cursor-pointer transition-all hover:shadow-xl hover:shadow-emerald-900/10 relative"
+            >
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 group-hover:border-emerald-500/30 group-hover:bg-emerald-500/10 transition-colors">
+                  <Film className="text-zinc-400 group-hover:text-emerald-400" size={24} />
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
+                  className="text-zinc-600 hover:text-red-500 p-2 rounded-full hover:bg-zinc-800 transition"
+                  title="Excluir Projeto"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+              
+              <h3 className="text-xl font-bold text-white mb-2 group-hover:text-emerald-400 transition-colors">{project.title}</h3>
+              <p className="text-zinc-500 text-sm line-clamp-2 h-10 mb-4">{project.description || "Sem descrição definida."}</p>
+              
+              <div className="flex items-center gap-2 text-xs text-zinc-600 border-t border-zinc-800 pt-4 mt-auto">
+                <Calendar size={14} />
+                <span>{new Date(project.created_at).toLocaleDateString()}</span>
+              </div>
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-zinc-900 text-zinc-500">ou</span>
-            </div>
-          </div>
-
-          <button 
-            type="button"
-            onClick={onGuestLogin}
-            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-3 rounded-lg transition flex items-center justify-center gap-2"
-          >
-            <UserX size={18} />
-            Continuar sem Login
-          </button>
-          
-          {message && <p className="text-center text-sm text-emerald-400 mt-2">{message}</p>}
-        </form>
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -277,8 +344,12 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
 
 export default function App() {
   const [supabase, setSupabase] = useState(null);
-  const [session, setSession] = useState(null);
-  const [isGuest, setIsGuest] = useState(false);
+  
+  // Estado para Projetos
+  const [projects, setProjects] = useState([]);
+  const [currentProject, setCurrentProject] = useState(null); // Se null, mostra lista de projetos. Se objeto, mostra board.
+
+  // Estado para Frames (Board)
   const [frames, setFrames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -290,13 +361,10 @@ export default function App() {
 
   // --- CARREGAMENTO SEGURO DA BIBLIOTECA (FUNCIONA NA PRÉVIA E GITHUB) ---
   useEffect(() => {
-    // Verifica se já existe globalmente
     if (window.supabase) {
       setIsLibLoaded(true);
       return;
     }
-    
-    // Injeta o script do Supabase via CDN
     const script = document.createElement('script');
     script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
     script.async = true;
@@ -308,7 +376,6 @@ export default function App() {
     document.body.appendChild(script);
   }, []);
 
-  // Inicializa o cliente Supabase assim que a lib carregar
   useEffect(() => {
     if (isLibLoaded && !supabase && SUPABASE_URL !== 'SUA_URL_AQUI') {
       try {
@@ -319,51 +386,92 @@ export default function App() {
         setErrorMsg("Erro nas chaves de API. Verifique o código.");
       }
     } else if (isLibLoaded && !supabase) {
-      // Lib carregada mas sem chaves configuradas
       setLoading(false);
     }
   }, [isLibLoaded]);
 
-  // 1. Gerenciar Sessão
+  // --- GERENCIAMENTO DE PROJETOS ---
+  
   useEffect(() => {
     if (!supabase) return;
+    fetchProjects();
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    // Listener para novos projetos
+    const channel = supabase
+      .channel('sbprojects_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, () => {
+        fetchProjects();
+      })
+      .subscribe();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
-  // 2. Buscar Frames
-  useEffect(() => {
+  const fetchProjects = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sbprojects')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setProjects(data || []);
+      setLoading(false);
+    } catch (error) {
+      console.error("Erro ao buscar projetos:", error);
+      // Não mostra erro na UI se for só tabela inexistente, para não assustar no primeiro uso
+      if (!error.message.includes('relation "sbprojects" does not exist')) {
+        setErrorMsg(error.message);
+      }
+      setLoading(false);
+    }
+  };
+
+  const handleCreateProject = async (projectData) => {
     if (!supabase) return;
-    if (!session && !isGuest) return; 
+    try {
+      const { error } = await supabase.from('sbprojects').insert([projectData]);
+      if (error) throw error;
+      fetchProjects();
+    } catch (error) {
+      alert("Erro ao criar projeto: " + error.message + "\n\nVerifique se criou a tabela 'sbprojects' no Supabase.");
+    }
+  };
+
+  const handleDeleteProject = async (id) => {
+    if (!supabase) return;
+    if (window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) {
+      const { error } = await supabase.from('sbprojects').delete().eq('id', id);
+      if (error) alert("Erro: " + error.message);
+      else fetchProjects();
+    }
+  };
+
+  // --- GERENCIAMENTO DE FRAMES (BOARD) ---
+
+  useEffect(() => {
+    if (!supabase || !currentProject) return;
     
     fetchFrames();
 
     const channel = supabase
-      .channel('frames_channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'frames' }, () => {
+      .channel(`sbframes_${currentProject.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, () => {
         fetchFrames();
       })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [session, isGuest, supabase]);
+    return () => { supabase.removeChannel(channel); };
+  }, [currentProject, supabase]);
 
   const fetchFrames = async () => {
+    if (!currentProject) return;
+    setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('frames')
+        .from('sbframes')
         .select('*')
+        .eq('project_id', currentProject.id)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
@@ -371,11 +479,13 @@ export default function App() {
     } catch (error) {
       console.error("Erro Supabase:", error);
       setErrorMsg(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSave = async (formData) => {
-    if (!supabase) return;
+  const handleSaveFrame = async (formData) => {
+    if (!supabase || !currentProject) return;
     setIsSaving(true);
     try {
       let imageBase64 = formData.imagePreview;
@@ -383,28 +493,21 @@ export default function App() {
         imageBase64 = await compressImage(formData.image);
       }
 
-      const userId = session?.user?.id || 'guest_user';
-
       const frameData = {
         title: formData.title,
         description: formData.description,
         prompt: formData.prompt,
         camera_move: formData.cameraMove, 
         image_base64: imageBase64,
-        user_id: userId,
+        project_id: currentProject.id, // VINCULA AO PROJETO ATUAL
         updated_at: new Date()
       };
 
       if (editingFrame) {
-        const { error } = await supabase
-          .from('frames')
-          .update(frameData)
-          .eq('id', editingFrame.id);
+        const { error } = await supabase.from('sbframes').update(frameData).eq('id', editingFrame.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('frames')
-          .insert([frameData]);
+        const { error } = await supabase.from('sbframes').insert([frameData]);
         if (error) throw error;
       }
 
@@ -413,50 +516,70 @@ export default function App() {
       fetchFrames(); 
     } catch (error) {
       console.error("Erro ao salvar:", error);
-      alert("Erro ao salvar: " + error.message + "\n\nDICA: Se não estiver logado, verifique se o RLS está desativado no Supabase.");
+      alert("Erro ao salvar: " + error.message);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDeleteFrame = async (id) => {
     if (!supabase) return;
     if (window.confirm("Excluir este frame?")) {
-      const { error } = await supabase.from('frames').delete().eq('id', id);
+      const { error } = await supabase.from('sbframes').delete().eq('id', id);
       if (error) alert("Erro ao deletar: " + error.message);
+      fetchFrames();
     }
   };
 
-  const handleLogout = async () => {
-    if (supabase && session) await supabase.auth.signOut();
-    setIsGuest(false);
-    setFrames([]);
-  };
+  // --- RENDERIZAÇÃO ---
 
-  if (!isLibLoaded) {
+  if (!isLibLoaded || loading && !projects.length && !currentProject) {
     return <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-zinc-500">
       <Loader2 className="animate-spin text-emerald-500" size={48} />
       <p>Carregando sistema...</p>
     </div>;
   }
 
-  if (loading) {
-    return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={48} /></div>;
+  // MODO 1: Lista de Projetos (Home)
+  if (!currentProject) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans">
+        <header className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur border-b border-zinc-800 px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Film className="text-white" size={18} />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-white">CineBoard <span className="text-emerald-500">Projetos</span></h1>
+          </div>
+        </header>
+        
+        <ProjectList 
+          projects={projects} 
+          onSelect={setCurrentProject} 
+          onCreate={handleCreateProject}
+          onDelete={handleDeleteProject}
+        />
+      </div>
+    );
   }
 
-  // Auth Screen se não tiver sessão e não for convidado
-  if ((!session && !isGuest) || !supabase) {
-    return <AuthScreen client={supabase} onGuestLogin={() => setIsGuest(true)} />;
-  }
-
+  // MODO 2: Board do Projeto (Frames)
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-emerald-500/30">
       <header className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur border-b border-zinc-800 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Film className="text-white" size={18} />
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setCurrentProject(null)}
+            className="p-2 bg-zinc-900 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+            title="Voltar aos Projetos"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          
+          <div className="flex flex-col">
+            <h1 className="text-xl font-bold tracking-tight text-white leading-none">{currentProject.title}</h1>
+            <span className="text-xs text-zinc-500 mt-1">Modo Storyboard</span>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-white">CineBoard <span className="text-emerald-500">Supabase</span></h1>
         </div>
 
         <div className="flex items-center gap-4">
@@ -470,7 +593,6 @@ export default function App() {
            <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow-lg shadow-emerald-900/20">
              <Plus size={18} /> <span className="hidden md:inline">Novo Frame</span>
            </button>
-           <button onClick={handleLogout} className="p-2 text-zinc-500 hover:text-white" title="Sair"><LogOut size={18} /></button>
         </div>
       </header>
 
@@ -478,22 +600,22 @@ export default function App() {
         {frames.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900/50">
             <Film size={64} className="text-zinc-700 mb-4" />
-            <h2 className="text-2xl font-bold text-zinc-500 mb-2">Seu storyboard está vazio</h2>
+            <h2 className="text-2xl font-bold text-zinc-500 mb-2">Projeto Vazio</h2>
             <p className="text-zinc-600 mb-8 max-w-md text-center">
-              {isGuest ? 'Modo Visitante Ativo (Dados Públicos).' : 'Banco de dados Supabase conectado.'} Comece a criar.
+              Adicione os frames gerados pela IA para montar sua cena.
             </p>
             <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-lg font-medium transition">Criar Primeiro Frame</button>
           </div>
         ) : (
           <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
             {frames.map((frame, index) => (
-              <FrameCard key={frame.id} index={index} data={frame} onDelete={handleDelete} onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} />
+              <FrameCard key={frame.id} index={index} data={frame} onDelete={handleDeleteFrame} onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} />
             ))}
           </div>
         )}
       </main>
 
-      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSave} initialData={editingFrame} isSaving={isSaving} />
+      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} />
     </div>
   );
 }
