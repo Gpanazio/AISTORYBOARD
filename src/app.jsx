@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+// PARA PRODUÇÃO (GitHub/Vercel): Descomente a linha abaixo e remova a lógica de Script Tag mais abaixo
+// import { createClient } from '@supabase/supabase-js';
+
 import { 
   Plus, 
   Trash2, 
@@ -17,13 +19,11 @@ import {
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
-// Em um projeto real, idealmente use variáveis de ambiente (import.meta.env.VITE_SUPABASE_URL)
-// Mas para este primeiro upload funcionar direto, pode colocar as strings aqui.
 const SUPABASE_URL = 'SUA_URL_AQUI'; 
 const SUPABASE_ANON_KEY = 'SUA_ANON_KEY_AQUI';
 
-// Inicialização do cliente (agora direta, sem scripts externos)
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// PARA PRODUÇÃO: Descomente a linha abaixo
+// const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- UTILITÁRIOS ---
 const compressImage = (file) => {
@@ -261,6 +261,8 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
 };
 
 export default function App() {
+  const [supabase, setSupabase] = useState(null);
+  const [isLibLoaded, setIsLibLoaded] = useState(false);
   const [session, setSession] = useState(null);
   const [frames, setFrames] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -270,8 +272,49 @@ export default function App() {
   const [viewMode, setViewMode] = useState('grid');
   const [errorMsg, setErrorMsg] = useState(null);
 
+  // --- LÓGICA DE CARREGAMENTO PARA PREVIEW (REMOVER EM PRODUÇÃO) ---
+  useEffect(() => {
+    // Se estiver em ambiente com window.supabase (já carregado)
+    if (window.supabase) {
+      setIsLibLoaded(true);
+      return;
+    }
+    
+    // Injeção do Script
+    const script = document.createElement('script');
+    script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+    script.async = true;
+    script.onload = () => {
+      setIsLibLoaded(true);
+    };
+    script.onerror = () => {
+      setErrorMsg("Falha ao carregar biblioteca Supabase. (Modo Preview)");
+      setLoading(false);
+    };
+    document.body.appendChild(script);
+  }, []);
+
+  // Inicializa o cliente quando a lib estiver pronta
+  useEffect(() => {
+    if (isLibLoaded && !supabase && SUPABASE_URL !== 'SUA_URL_AQUI') {
+      try {
+        // window.supabase vem do script CDN
+        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        setSupabase(client);
+      } catch (e) {
+        console.error("Erro init supabase:", e);
+        setErrorMsg("Erro na inicialização: Verifique suas chaves.");
+      }
+    } else if (isLibLoaded && !supabase) {
+      setLoading(false); // Lib carregada mas sem chaves
+    }
+  }, [isLibLoaded]);
+  // -------------------------------------------------------------
+
   // 1. Gerenciar Sessão
   useEffect(() => {
+    if (!supabase) return;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
@@ -282,11 +325,11 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [supabase]);
 
   // 2. Buscar Frames e Realtime
   useEffect(() => {
-    if (!session) return;
+    if (!session || !supabase) return;
     
     fetchFrames();
 
@@ -300,7 +343,7 @@ export default function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session]);
+  }, [session, supabase]);
 
   const fetchFrames = async () => {
     try {
@@ -318,7 +361,7 @@ export default function App() {
   };
 
   const handleSave = async (formData) => {
-    if (!session) return;
+    if (!session || !supabase) return;
     setIsSaving(true);
     try {
       let imageBase64 = formData.imagePreview;
@@ -361,6 +404,7 @@ export default function App() {
   };
 
   const handleDelete = async (id) => {
+    if (!supabase) return;
     if (window.confirm("Excluir este frame?")) {
       const { error } = await supabase.from('frames').delete().eq('id', id);
       if (error) alert("Erro ao deletar: " + error.message);
@@ -368,14 +412,22 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (supabase) await supabase.auth.signOut();
   };
+
+  if (!isLibLoaded) {
+    return <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-zinc-500">
+      <Loader2 className="animate-spin text-emerald-500" size={48} />
+      <p>Carregando bibliotecas...</p>
+    </div>;
+  }
 
   if (loading) {
     return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={48} /></div>;
   }
 
-  if (!session) {
+  if (!session || !supabase) {
+    // Se o supabase não iniciou (sem chaves) ou sem sessão, mostra auth
     return <AuthScreen client={supabase} />;
   }
 
