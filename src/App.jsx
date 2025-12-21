@@ -25,7 +25,7 @@ import {
   LayoutTemplate,
   Wifi,
   WifiOff,
-  RefreshCw // Novo ícone importado
+  RefreshCw
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -542,14 +542,18 @@ export default function App() {
   const dragItem = useRef();
   const dragOverItem = useRef();
 
-  const fetchWithRetry = async (fn, retries = 3, delay = 1000) => {
+  // Retry logic wrapper
+  const fetchWithRetry = async (fn, retries = 10, delay = 2000) => { // Aumentado para 10 retries e 2s delay
     try {
-      await fn();
+      await fn(false); // False = não forçar loading visual no retry automático
     } catch (err) {
       if (retries > 0) {
-        setTimeout(() => fetchWithRetry(fn, retries - 1, delay * 1.5), delay);
+        // Se for erro de timeout, espera mais
+        const waitTime = err.message && err.message.includes('timeout') ? delay * 2 : delay;
+        console.log(`Retrying... attempts left: ${retries}. Waiting ${waitTime}ms`);
+        setTimeout(() => fetchWithRetry(fn, retries - 1, waitTime), waitTime);
       } else {
-        setErrorMsg("Erro de conexão. Verifique sua internet.");
+        setErrorMsg("O servidor demorou a responder (Timeout). Tente recarregar.");
       }
     }
   };
@@ -590,7 +594,7 @@ export default function App() {
     const channel = supabase.channel('sbprojects_channel')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, (payload) => {
             console.log('Realtime update:', payload);
-            fetchProjects();
+            fetchProjects(false);
         })
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') setIsConnected(true);
@@ -600,17 +604,19 @@ export default function App() {
     return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
-  const fetchProjects = async () => {
+  const fetchProjects = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const { data, error } = await supabase.from('sbprojects').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       setProjects(data || []);
-      setLoading(false);
       setErrorMsg(null); 
     } catch (error) {
       if (!error.message.includes('relation "sbprojects" does not exist')) setErrorMsg(error.message);
-      setLoading(false);
-      throw error; 
+      // Propaga o erro para o retry handler
+      throw error;
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -668,15 +674,17 @@ export default function App() {
     const channel = supabase.channel(`sbframes_${currentProject.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, (payload) => {
             console.log('Realtime frame update:', payload);
-            fetchFrames();
+            fetchFrames(false);
         })
         .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [currentProject, supabase]);
 
-  const fetchFrames = async () => {
+  const fetchFrames = async (showLoading = true) => {
     if (!currentProject) return;
+    if (showLoading) setLoading(true); // Força loading visual se solicitado (botão recarregar)
+    
     try {
       const { data, error } = await supabase
         .from('sbframes')
@@ -708,7 +716,7 @@ export default function App() {
       setErrorMsg(error.message);
       throw error;
     } finally {
-      setLoading(false); // GARANTE QUE O LOADING PARA
+      setLoading(false);
     }
   };
 
@@ -894,7 +902,7 @@ export default function App() {
 
             <div className="flex gap-4">
                 <button 
-                    onClick={() => fetchFrames()} 
+                    onClick={() => fetchFrames(true)} 
                     className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"
                 >
                     <RefreshCw size={16} /> Recarregar
