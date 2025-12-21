@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -16,9 +16,12 @@ import {
   FolderPlus,
   FolderOpen,
   ChevronLeft,
+  ChevronRight,
   LayoutGrid,
   Calendar,
-  Download
+  Download,
+  Play,
+  GripVertical
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -48,6 +51,83 @@ const copyToClipboard = (text) => {
 };
 
 // --- COMPONENTES ---
+
+const CarouselModal = ({ frames, initialIndex, onClose }) => {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev + 1) % frames.length);
+  };
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev - 1 + frames.length) % frames.length);
+  };
+
+  // Suporte a teclado
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowRight') handleNext();
+      if (e.key === 'ArrowLeft') handlePrev();
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [frames.length]);
+
+  const currentFrame = frames[currentIndex];
+
+  if (!currentFrame) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/95 z-[60] flex flex-col">
+      {/* Header Carrossel */}
+      <div className="flex justify-between items-center p-4 text-zinc-400">
+        <div className="text-sm font-mono">
+          FRAME {currentIndex + 1} / {frames.length}
+        </div>
+        <button onClick={onClose} className="hover:text-white p-2 rounded-full hover:bg-zinc-800 transition">
+          <X size={24} />
+        </button>
+      </div>
+
+      {/* Área da Imagem */}
+      <div className="flex-1 relative flex items-center justify-center p-4 overflow-hidden">
+        <img 
+          src={currentFrame.image_base64} 
+          alt={currentFrame.title} 
+          className="max-w-full max-h-full object-contain shadow-2xl"
+        />
+        
+        {/* Navegação */}
+        <button 
+          onClick={handlePrev}
+          className="absolute left-4 p-4 bg-black/50 hover:bg-emerald-600/80 text-white rounded-full transition backdrop-blur-sm"
+        >
+          <ChevronLeft size={32} />
+        </button>
+        <button 
+          onClick={handleNext}
+          className="absolute right-4 p-4 bg-black/50 hover:bg-emerald-600/80 text-white rounded-full transition backdrop-blur-sm"
+        >
+          <ChevronRight size={32} />
+        </button>
+      </div>
+
+      {/* Footer Info */}
+      <div className="bg-gradient-to-t from-black via-black/80 to-transparent p-8 pb-10">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-2xl font-bold text-white mb-2">{currentFrame.title || "Sem título"}</h2>
+          {currentFrame.camera_move && (
+            <span className="inline-block bg-emerald-900/50 text-emerald-400 text-xs px-2 py-1 rounded border border-emerald-800 mb-3 uppercase tracking-wider">
+              {currentFrame.camera_move}
+            </span>
+          )}
+          <p className="text-zinc-400 max-w-2xl mx-auto">{currentFrame.description}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ProjectList = ({ projects, onSelect, onCreate, onDelete }) => {
   const [isCreating, setIsCreating] = useState(false);
@@ -254,7 +334,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
   );
 };
 
-const FrameCard = ({ data, onDelete, onEdit, index }) => {
+const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd }) => {
   const [copied, setCopied] = useState(false);
   
   const handleCopyPrompt = () => {
@@ -264,21 +344,34 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Nome do arquivo para download
   const downloadName = `cineboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
 
   return (
-    <div className="group relative bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all duration-300 hover:shadow-xl flex flex-col h-full">
-      <div className="relative aspect-video bg-black overflow-hidden cursor-pointer" onClick={() => onEdit(data)}>
+    <div 
+      className="group relative bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-600 transition-all duration-300 hover:shadow-xl flex flex-col h-full cursor-grab active:cursor-grabbing"
+      draggable
+      onDragStart={(e) => onDragStart(e, index)}
+      onDragEnter={(e) => onDragEnter(e, index)}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => e.preventDefault()}
+    >
+      <div className="relative aspect-video bg-black overflow-hidden" onClick={() => onEdit(data)}>
         {data.image_base64 ? (
-          <img src={data.image_base64} alt={data.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          <img src={data.image_base64} alt={data.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 select-none pointer-events-none" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-700"><Film size={48} /></div>
         )}
-        <div className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-xs font-mono px-2 py-1 rounded">#{index + 1}</div>
+        <div className="absolute top-2 left-2 bg-black/70 backdrop-blur text-white text-xs font-mono px-2 py-1 rounded z-10">
+          #{index + 1}
+        </div>
         
+        {/* Grip Icon para indicar Drag */}
+        <div className="absolute top-2 right-2 text-white/50 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-black/30 rounded p-1">
+            <GripVertical size={16} />
+        </div>
+
         {/* Actions Overlay */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 z-20">
             <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-2 bg-white text-black rounded-full hover:bg-emerald-500 hover:text-white transition" title="Editar"><Edit3 size={20} /></button>
             <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition" title="Excluir"><Trash2 size={20} /></button>
         </div>
@@ -297,7 +390,6 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
         <div className="mt-auto pt-3 border-t border-zinc-800">
              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                   {/* Botão de Download do Original */}
                    <a 
                      href={data.image_base64} 
                      download={downloadName}
@@ -324,22 +416,27 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
 
 export default function App() {
   const [supabase, setSupabase] = useState(null);
+  const [isLibLoaded, setIsLibLoaded] = useState(false);
   
-  // Estado para Projetos
+  // Dados
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null); 
-
-  // Estado para Frames
   const [frames, setFrames] = useState([]);
+  
+  // UI States
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingFrame, setEditingFrame] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
   const [errorMsg, setErrorMsg] = useState(null);
-  const [isLibLoaded, setIsLibLoaded] = useState(false);
+  const [carouselOpen, setCarouselOpen] = useState(false);
+  const [carouselStartIndex, setCarouselStartIndex] = useState(0);
 
-  // --- CARREGAMENTO SEGURO DA BIBLIOTECA (FUNCIONA NA PRÉVIA E GITHUB) ---
+  // Drag References
+  const dragItem = useRef();
+  const dragOverItem = useRef();
+
   useEffect(() => {
     if (window.supabase) {
       setIsLibLoaded(true);
@@ -349,10 +446,7 @@ export default function App() {
     script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
     script.async = true;
     script.onload = () => setIsLibLoaded(true);
-    script.onerror = () => {
-      setErrorMsg("Falha ao carregar a biblioteca Supabase.");
-      setLoading(false);
-    };
+    script.onerror = () => { setErrorMsg("Falha ao carregar a biblioteca Supabase."); setLoading(false); };
     document.body.appendChild(script);
   }, []);
 
@@ -363,44 +457,30 @@ export default function App() {
         setSupabase(client);
       } catch (e) {
         console.error("Erro inicialização Supabase:", e);
-        setErrorMsg("Erro nas chaves de API. Verifique o código.");
+        setErrorMsg("Erro nas chaves de API.");
       }
     } else if (isLibLoaded && !supabase) {
       setLoading(false);
     }
   }, [isLibLoaded]);
 
-  // --- GERENCIAMENTO DE PROJETOS ---
+  // --- PROJETOS ---
   
   useEffect(() => {
     if (!supabase) return;
     fetchProjects();
-
-    const channel = supabase
-      .channel('sbprojects_channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, () => {
-        fetchProjects();
-      })
-      .subscribe();
-
+    const channel = supabase.channel('sbprojects_channel').on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, fetchProjects).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
   const fetchProjects = async () => {
     try {
-      const { data, error } = await supabase
-        .from('sbprojects')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
+      const { data, error } = await supabase.from('sbprojects').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       setProjects(data || []);
       setLoading(false);
     } catch (error) {
-      console.error("Erro ao buscar projetos:", error);
-      if (!error.message.includes('relation "sbprojects" does not exist')) {
-        setErrorMsg(error.message);
-      }
+      if (!error.message.includes('relation "sbprojects" does not exist')) setErrorMsg(error.message);
       setLoading(false);
     }
   };
@@ -411,47 +491,28 @@ export default function App() {
       const { error } = await supabase.from('sbprojects').insert([projectData]);
       if (error) throw error;
       fetchProjects();
-    } catch (error) {
-      alert("Erro ao criar projeto: " + error.message);
-    }
+    } catch (error) { alert("Erro ao criar projeto: " + error.message); }
   };
 
-  // --- FUNÇÃO DE DELETAR PROJETO ATUALIZADA (COM SENHA) ---
   const handleDeleteProject = async (id) => {
     if (!supabase) return;
-    
-    // 1. Confirmação Básica
-    if (!window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) {
-      return;
-    }
-
-    // 2. Solicitação de Senha Simples (Prompt)
+    if (!window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) return;
     const password = window.prompt("Digite a senha de administrador para confirmar a exclusão:");
-    
-    // 3. Verificação da Senha (Brick$2016)
     if (password === "Brick$2016") {
         const { error } = await supabase.from('sbprojects').delete().eq('id', id);
         if (error) alert("Erro: " + error.message);
         else fetchProjects();
-    } else if (password !== null) { // Se usuário não clicou em Cancelar
-        alert("Senha incorreta. O projeto não foi excluído.");
+    } else if (password !== null) {
+        alert("Senha incorreta.");
     }
   };
 
-  // --- GERENCIAMENTO DE FRAMES (BOARD) ---
+  // --- FRAMES & DRAG AND DROP ---
 
   useEffect(() => {
     if (!supabase || !currentProject) return;
-    
     fetchFrames();
-
-    const channel = supabase
-      .channel(`sbframes_${currentProject.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, () => {
-        fetchFrames();
-      })
-      .subscribe();
-
+    const channel = supabase.channel(`sbframes_${currentProject.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, fetchFrames).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [currentProject, supabase]);
 
@@ -459,10 +520,12 @@ export default function App() {
     if (!currentProject) return;
     setLoading(true);
     try {
+      // Ordena por 'order_index' e depois por data de criação como fallback
       const { data, error } = await supabase
         .from('sbframes')
         .select('*')
         .eq('project_id', currentProject.id)
+        .order('order_index', { ascending: true })
         .order('created_at', { ascending: true });
       
       if (error) throw error;
@@ -475,22 +538,64 @@ export default function App() {
     }
   };
 
+  const handleDragStart = (e, position) => {
+    dragItem.current = position;
+  };
+
+  const handleDragEnter = (e, position) => {
+    e.preventDefault();
+    dragOverItem.current = position;
+    
+    // Reordenação Visual Instantânea
+    const copyListItems = [...frames];
+    const dragItemContent = copyListItems[dragItem.current];
+    copyListItems.splice(dragItem.current, 1);
+    copyListItems.splice(dragOverItem.current, 0, dragItemContent);
+    
+    // Precisamos resetar a referência do dragItem para o novo índice para continuar arrastando corretamente
+    dragItem.current = position;
+    
+    setFrames(copyListItems);
+  };
+
+  const handleDragEnd = async () => {
+    dragItem.current = null;
+    dragOverItem.current = null;
+
+    // Salvar Nova Ordem no Supabase
+    if (!supabase) return;
+
+    // Prepara o payload com os novos índices
+    const updates = frames.map((frame, index) => ({
+        id: frame.id,
+        order_index: index,
+        project_id: currentProject.id, // Necessário para o upsert não reclamar de constraints
+        // Mantemos os campos obrigatórios para o upsert funcionar suave
+        updated_at: new Date()
+    }));
+
+    try {
+        const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' });
+        if (error) throw error;
+    } catch (error) {
+        console.error("Erro ao salvar ordem:", error);
+    }
+  };
+
   const handleSaveFrame = async (formData) => {
     if (!supabase || !currentProject) return;
-    
-    // VALIDAÇÃO: Única coisa obrigatória é a imagem
     if (!formData.image && !formData.imagePreview) {
-      alert("A imagem é obrigatória para criar um frame.");
+      alert("A imagem é obrigatória.");
       return;
     }
 
     setIsSaving(true);
     try {
       let imageBase64 = formData.imagePreview;
-      if (formData.image) {
-        // AGORA USA A FUNÇÃO SEM COMPRESSÃO
-        imageBase64 = await convertFileToBase64(formData.image);
-      }
+      if (formData.image) imageBase64 = await convertFileToBase64(formData.image);
+
+      // Se for novo frame, coloca no final da lista
+      const newOrderIndex = frames.length;
 
       const frameData = {
         title: formData.title || '',
@@ -499,6 +604,7 @@ export default function App() {
         camera_move: formData.cameraMove || '', 
         image_base64: imageBase64,
         project_id: currentProject.id, 
+        order_index: editingFrame ? editingFrame.order_index : newOrderIndex,
         updated_at: new Date()
       };
 
@@ -515,12 +621,8 @@ export default function App() {
       fetchFrames(); 
     } catch (error) {
       console.error("Erro ao salvar:", error);
-      // Tratamento de erro específico para Payload Too Large
-      if (error.message && error.message.includes('413')) {
-        alert("Erro: A imagem é muito grande para o banco de dados (Limite ~6MB). Tente uma imagem menor ou configure um Bucket de Storage.");
-      } else {
-        alert("Erro ao salvar: " + error.message);
-      }
+      if (error.message && error.message.includes('413')) alert("Erro: Imagem muito grande.");
+      else alert("Erro ao salvar: " + error.message);
     } finally {
       setIsSaving(false);
     }
@@ -537,14 +639,13 @@ export default function App() {
 
   // --- RENDERIZAÇÃO ---
 
-  if (!isLibLoaded || loading && !projects.length && !currentProject) {
+  if (!isLibLoaded || (loading && !projects.length && !currentProject)) {
     return <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-zinc-500">
       <Loader2 className="animate-spin text-emerald-500" size={48} />
       <p>Carregando sistema...</p>
     </div>;
   }
 
-  // MODO 1: Lista de Projetos (Home)
   if (!currentProject) {
     return (
       <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans">
@@ -556,39 +657,32 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight text-white">CineBoard <span className="text-emerald-500">Projetos</span></h1>
           </div>
         </header>
-        
-        <ProjectList 
-          projects={projects} 
-          onSelect={setCurrentProject} 
-          onCreate={handleCreateProject}
-          onDelete={handleDeleteProject}
-        />
+        <ProjectList projects={projects} onSelect={setCurrentProject} onCreate={handleCreateProject} onDelete={handleDeleteProject} />
       </div>
     );
   }
 
-  // MODO 2: Board do Projeto (Frames)
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-emerald-500/30">
       <header className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur border-b border-zinc-800 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setCurrentProject(null)}
-            className="p-2 bg-zinc-900 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
-            title="Voltar aos Projetos"
-          >
+          <button onClick={() => setCurrentProject(null)} className="p-2 bg-zinc-900 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition" title="Voltar">
             <ChevronLeft size={20} />
           </button>
-          
           <div className="flex flex-col">
             <h1 className="text-xl font-bold tracking-tight text-white leading-none">{currentProject.title}</h1>
             <span className="text-xs text-zinc-500 mt-1">Modo Storyboard</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-           {errorMsg && <span className="text-red-500 text-xs hidden md:inline">{errorMsg}</span>}
-           
+        <div className="flex items-center gap-3">
+           <button 
+             onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }}
+             className="hidden md:flex bg-zinc-800 hover:bg-emerald-600 hover:text-white text-zinc-300 px-4 py-2 rounded-lg font-medium items-center gap-2 transition"
+           >
+             <Play size={18} /> <span className="text-sm">Apresentar</span>
+           </button>
+
            <div className="hidden md:flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
                 <button onClick={() => setViewMode('grid')} className={`p-2 rounded ${viewMode === 'grid' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}><Maximize2 size={18} /></button>
                 <button onClick={() => setViewMode('list')} className={`p-2 rounded ${viewMode === 'list' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}><Move size={18} /></button>
@@ -605,29 +699,33 @@ export default function App() {
           <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-zinc-800 rounded-2xl bg-zinc-900/50">
             <Film size={64} className="text-zinc-700 mb-4" />
             <h2 className="text-2xl font-bold text-zinc-500 mb-2">Projeto Vazio</h2>
-            <p className="text-zinc-600 mb-8 max-w-md text-center">
-              Adicione os frames originais (sem compressão) aqui.
-            </p>
+            <p className="text-zinc-600 mb-8 max-w-md text-center">Adicione os frames gerados pela IA.</p>
             <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-lg font-medium transition">Criar Primeiro Frame</button>
           </div>
         ) : (
           <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
             {frames.map((frame, index) => (
-              <FrameCard key={frame.id} index={index} data={frame} onDelete={handleDeleteFrame} onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} />
+              <FrameCard 
+                key={frame.id} 
+                index={index} 
+                data={frame} 
+                onDelete={handleDeleteFrame} 
+                onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }}
+                onDragStart={handleDragStart}
+                onDragEnter={handleDragEnter}
+                onDragEnd={handleDragEnd}
+              />
             ))}
             
-            {/* CARD DE ADICIONAR AO FINAL DO GRID */}
             <button
               onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }}
-              className="group relative bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-xl overflow-hidden hover:border-emerald-500/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left"
+              className="group relative bg-zinc-900/30 border-2 border-dashed border-zinc-800 rounded-xl overflow-hidden hover:border-emerald-500/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[300px]"
             >
-              <div className="w-full aspect-video flex items-center justify-center bg-zinc-900/50 group-hover:bg-zinc-800/50 transition-colors">
-                 <div className="w-16 h-16 rounded-full bg-zinc-800 group-hover:bg-emerald-500/20 flex items-center justify-center transition-colors shadow-lg">
+              <div className="w-full h-full flex flex-col items-center justify-center">
+                 <div className="w-16 h-16 rounded-full bg-zinc-800 group-hover:bg-emerald-500/20 flex items-center justify-center transition-colors shadow-lg mb-4">
                     <Plus className="text-zinc-500 group-hover:text-emerald-500" size={32} />
                  </div>
-              </div>
-              <div className="p-4 flex flex-col flex-1 items-center justify-center">
-                 <span className="text-zinc-500 font-medium group-hover:text-emerald-400">Adicionar Novo Frame</span>
+                 <span className="text-zinc-500 font-medium group-hover:text-emerald-400">Adicionar Frame</span>
               </div>
             </button>
           </div>
@@ -635,6 +733,14 @@ export default function App() {
       </main>
 
       <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} />
+      
+      {carouselOpen && (
+        <CarouselModal 
+          frames={frames} 
+          initialIndex={carouselStartIndex} 
+          onClose={() => setCarouselOpen(false)} 
+        />
+      )}
     </div>
   );
 }
