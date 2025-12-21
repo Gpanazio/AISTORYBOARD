@@ -30,6 +30,13 @@ import {
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
 
+// --- SQL DE CORREÇÃO (RODE ISSO SE ESTIVER VAZIO) ---
+/*
+  alter table sbprojects disable row level security;
+  alter table sbframes disable row level security;
+  alter table sbframes add column if not exists order_index bigint default 0;
+*/
+
 // --- UTILITÁRIOS ---
 
 const convertFileToBase64 = (file) => {
@@ -651,6 +658,7 @@ export default function App() {
     if (!currentProject) return;
     setLoading(true);
     try {
+      // Tenta buscar com a ordenação personalizada
       const { data, error } = await supabase
         .from('sbframes')
         .select('*')
@@ -658,11 +666,26 @@ export default function App() {
         .order('order_index', { ascending: true })
         .order('created_at', { ascending: true });
       
-      if (error) throw error;
+      if (error) {
+        // Fallback: Se der erro (ex: coluna order_index faltando), tenta busca simples
+        if (error.code === 'PGRST301' || error.message.includes('order_index')) {
+             console.warn("Coluna order_index não encontrada, buscando sem ordenação customizada.");
+             const { data: fallbackData, error: fallbackError } = await supabase
+                .from('sbframes')
+                .select('*')
+                .eq('project_id', currentProject.id)
+                .order('created_at', { ascending: true });
+             
+             if (fallbackError) throw fallbackError;
+             setFrames(fallbackData || []);
+             return;
+        }
+        throw error;
+      }
       setFrames(data || []);
     } catch (error) {
       console.error("Erro Supabase:", error);
-      setErrorMsg(error.message);
+      setErrorMsg("Erro ao carregar frames: " + error.message + " (Verifique se RLS está desativado na tabela sbframes)");
     } finally {
       setLoading(false);
     }
@@ -819,6 +842,7 @@ export default function App() {
                     <Loader2 className="animate-spin text-red-600 relative z-10" size={64} />
                 </div>
                 <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p>
+                {errorMsg && <p className="text-red-500 text-xs mt-4">{errorMsg}</p>}
             </div>
         ) : frames.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950">
