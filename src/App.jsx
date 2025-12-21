@@ -129,18 +129,37 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
   );
 };
 
-const ProjectList = ({ projects, onSelect, onCreate, onDelete }) => {
-  const [isCreating, setIsCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
+const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
 
-  const handleCreate = (e) => {
+  const openCreateModal = () => {
+    setEditingProject(null);
+    setTitle('');
+    setDesc('');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (project, e) => {
+    e.stopPropagation();
+    setEditingProject(project);
+    setTitle(project.title);
+    setDesc(project.description || '');
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
-    onCreate({ title: newTitle, description: newDesc });
-    setNewTitle('');
-    setNewDesc('');
-    setIsCreating(false);
+    if (!title.trim()) return;
+    
+    if (editingProject) {
+      onUpdate(editingProject.id, { title, description: desc });
+    } else {
+      onCreate({ title, description: desc });
+    }
+    setIsModalOpen(false);
   };
 
   return (
@@ -151,25 +170,27 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete }) => {
           <p className="text-zinc-400">Repositório oficial de frames e storyboards</p>
         </div>
         <button 
-          onClick={() => setIsCreating(true)}
+          onClick={openCreateModal}
           className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-900/20"
         >
           <FolderPlus size={20} /> Novo Projeto
         </button>
       </div>
 
-      {isCreating && (
+      {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-4">Criar Novo Projeto</h2>
-            <form onSubmit={handleCreate} className="space-y-4">
+            <h2 className="text-xl font-bold text-white mb-4">
+              {editingProject ? 'Editar Projeto' : 'Criar Novo Projeto'}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-mono text-zinc-400 mb-1">NOME DO PROJETO</label>
                 <input 
                   autoFocus
                   type="text" 
-                  value={newTitle}
-                  onChange={e => setNewTitle(e.target.value)}
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
                   className="w-full bg-black border border-zinc-700 rounded p-3 text-white focus:border-emerald-500 outline-none"
                   placeholder="Ex: Curta Metragem Sci-Fi"
                 />
@@ -177,15 +198,17 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete }) => {
               <div>
                 <label className="block text-xs font-mono text-zinc-400 mb-1">DESCRIÇÃO (Opcional)</label>
                 <textarea 
-                  value={newDesc}
-                  onChange={e => setNewDesc(e.target.value)}
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
                   className="w-full bg-black border border-zinc-700 rounded p-3 text-white focus:border-emerald-500 outline-none h-24"
                   placeholder="Sinopse ou notas gerais..."
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setIsCreating(false)} className="px-4 py-2 text-zinc-400 hover:text-white">Cancelar</button>
-                <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium">Criar</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-zinc-400 hover:text-white">Cancelar</button>
+                <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium">
+                  {editingProject ? 'Salvar Alterações' : 'Criar'}
+                </button>
               </div>
             </form>
           </div>
@@ -210,13 +233,22 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete }) => {
                 <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 group-hover:border-emerald-500/30 group-hover:bg-emerald-500/10 transition-colors">
                   <Film className="text-zinc-400 group-hover:text-emerald-400" size={24} />
                 </div>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
-                  className="text-zinc-600 hover:text-red-500 p-2 rounded-full hover:bg-zinc-800 transition"
-                  title="Excluir Projeto"
-                >
-                  <Trash2 size={18} />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={(e) => openEditModal(project, e)}
+                    className="text-zinc-600 hover:text-white p-2 rounded-full hover:bg-zinc-800 transition"
+                    title="Editar Projeto"
+                  >
+                    <Edit3 size={18} />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
+                    className="text-zinc-600 hover:text-red-500 p-2 rounded-full hover:bg-zinc-800 transition"
+                    title="Excluir Projeto"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
               </div>
               
               <h3 className="text-xl font-bold text-white mb-2 group-hover:text-emerald-400 transition-colors">{project.title}</h3>
@@ -494,6 +526,18 @@ export default function App() {
     } catch (error) { alert("Erro ao criar projeto: " + error.message); }
   };
 
+  // NOVA FUNÇÃO: Atualizar Projeto
+  const handleUpdateProject = async (id, projectData) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.from('sbprojects').update(projectData).eq('id', id);
+      if (error) throw error;
+      fetchProjects();
+    } catch (error) {
+      alert("Erro ao atualizar projeto: " + error.message);
+    }
+  };
+
   const handleDeleteProject = async (id) => {
     if (!supabase) return;
     if (!window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) return;
@@ -657,7 +701,13 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight text-white">CineBoard <span className="text-emerald-500">Projetos</span></h1>
           </div>
         </header>
-        <ProjectList projects={projects} onSelect={setCurrentProject} onCreate={handleCreateProject} onDelete={handleDeleteProject} />
+        <ProjectList 
+          projects={projects} 
+          onSelect={setCurrentProject} 
+          onCreate={handleCreateProject} 
+          onDelete={handleDeleteProject}
+          onUpdate={handleUpdateProject} 
+        />
       </div>
     );
   }
