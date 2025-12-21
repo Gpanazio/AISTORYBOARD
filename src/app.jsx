@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// PARA PRODUÇÃO (GitHub/Vercel): Descomente a linha abaixo e remova a lógica de Script Tag mais abaixo
-// import { createClient } from '@supabase/supabase-js';
-
 import { 
   Plus, 
   Trash2, 
@@ -20,11 +17,10 @@ import {
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
+// COLOQUE SUAS CHAVES AQUI
 const SUPABASE_URL =https://ujpvyslrosmismgbcczl.supabase.co
 const SUPABASE_ANON_KEY =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs;
 
-// PARA PRODUÇÃO: Descomente a linha abaixo
-// const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- UTILITÁRIOS ---
 const compressImage = (file) => {
@@ -281,9 +277,8 @@ const FrameCard = ({ data, onDelete, onEdit, index }) => {
 
 export default function App() {
   const [supabase, setSupabase] = useState(null);
-  const [isLibLoaded, setIsLibLoaded] = useState(false);
   const [session, setSession] = useState(null);
-  const [isGuest, setIsGuest] = useState(false); // Novo estado para controlar visitante
+  const [isGuest, setIsGuest] = useState(false);
   const [frames, setFrames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -291,38 +286,43 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
   const [errorMsg, setErrorMsg] = useState(null);
+  const [isLibLoaded, setIsLibLoaded] = useState(false);
 
-  // --- LÓGICA DE CARREGAMENTO PARA PREVIEW (REMOVER EM PRODUÇÃO) ---
+  // --- CARREGAMENTO SEGURO DA BIBLIOTECA (FUNCIONA NA PRÉVIA E GITHUB) ---
   useEffect(() => {
+    // Verifica se já existe globalmente
     if (window.supabase) {
       setIsLibLoaded(true);
       return;
     }
+    
+    // Injeta o script do Supabase via CDN
     const script = document.createElement('script');
     script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
     script.async = true;
-    script.onload = () => { setIsLibLoaded(true); };
+    script.onload = () => setIsLibLoaded(true);
     script.onerror = () => {
-      setErrorMsg("Falha ao carregar biblioteca Supabase. (Modo Preview)");
+      setErrorMsg("Falha ao carregar a biblioteca Supabase.");
       setLoading(false);
     };
     document.body.appendChild(script);
   }, []);
 
+  // Inicializa o cliente Supabase assim que a lib carregar
   useEffect(() => {
     if (isLibLoaded && !supabase && SUPABASE_URL !== 'SUA_URL_AQUI') {
       try {
         const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         setSupabase(client);
       } catch (e) {
-        console.error("Erro init supabase:", e);
-        setErrorMsg("Erro na inicialização: Verifique suas chaves.");
+        console.error("Erro inicialização Supabase:", e);
+        setErrorMsg("Erro nas chaves de API. Verifique o código.");
       }
     } else if (isLibLoaded && !supabase) {
-      setLoading(false); 
+      // Lib carregada mas sem chaves configuradas
+      setLoading(false);
     }
   }, [isLibLoaded]);
-  // -------------------------------------------------------------
 
   // 1. Gerenciar Sessão
   useEffect(() => {
@@ -330,9 +330,7 @@ export default function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      // Só para de carregar se já tiver sessão. Se não tiver, espera escolha do usuário (AuthScreen)
-      if (session) setLoading(false);
-      else setLoading(false); 
+      setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -342,10 +340,10 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  // 2. Buscar Frames (funciona com usuário logado ou guest)
+  // 2. Buscar Frames
   useEffect(() => {
     if (!supabase) return;
-    if (!session && !isGuest) return; // Só busca se tiver login OU for guest
+    if (!session && !isGuest) return; 
     
     fetchFrames();
 
@@ -385,7 +383,6 @@ export default function App() {
         imageBase64 = await compressImage(formData.image);
       }
 
-      // Se não tiver sessão, usa um ID de convidado fixo
       const userId = session?.user?.id || 'guest_user';
 
       const frameData = {
@@ -416,7 +413,7 @@ export default function App() {
       fetchFrames(); 
     } catch (error) {
       console.error("Erro ao salvar:", error);
-      alert("Erro ao salvar: " + error.message + "\n\nDICA: Se você não está logado, certifique-se de ter rodado o comando SQL para desativar o RLS.");
+      alert("Erro ao salvar: " + error.message + "\n\nDICA: Se não estiver logado, verifique se o RLS está desativado no Supabase.");
     } finally {
       setIsSaving(false);
     }
@@ -439,7 +436,7 @@ export default function App() {
   if (!isLibLoaded) {
     return <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-zinc-500">
       <Loader2 className="animate-spin text-emerald-500" size={48} />
-      <p>Carregando bibliotecas...</p>
+      <p>Carregando sistema...</p>
     </div>;
   }
 
@@ -447,7 +444,7 @@ export default function App() {
     return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={48} /></div>;
   }
 
-  // Mostra AuthScreen se não tiver sessão E não tiver optado por guest
+  // Auth Screen se não tiver sessão e não for convidado
   if ((!session && !isGuest) || !supabase) {
     return <AuthScreen client={supabase} onGuestLogin={() => setIsGuest(true)} />;
   }
