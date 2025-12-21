@@ -24,7 +24,8 @@ import {
   GripVertical,
   LayoutTemplate,
   Wifi,
-  WifiOff
+  WifiOff,
+  RefreshCw // Novo ícone importado
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -523,7 +524,7 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
 export default function App() {
   const [supabase, setSupabase] = useState(null);
   const [isLibLoaded, setIsLibLoaded] = useState(false);
-  const [isConnected, setIsConnected] = useState(false); // Status da conexão
+  const [isConnected, setIsConnected] = useState(false); 
   
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null); 
@@ -541,7 +542,6 @@ export default function App() {
   const dragItem = useRef();
   const dragOverItem = useRef();
 
-  // Retry logic wrapper
   const fetchWithRetry = async (fn, retries = 3, delay = 1000) => {
     try {
       await fn();
@@ -585,10 +585,8 @@ export default function App() {
   useEffect(() => {
     if (!supabase) return;
     
-    // Initial fetch with retry
     fetchWithRetry(fetchProjects);
 
-    // Realtime subscription robusta
     const channel = supabase.channel('sbprojects_channel')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, (payload) => {
             console.log('Realtime update:', payload);
@@ -608,11 +606,11 @@ export default function App() {
       if (error) throw error;
       setProjects(data || []);
       setLoading(false);
-      setErrorMsg(null); // Clear errors on success
+      setErrorMsg(null); 
     } catch (error) {
       if (!error.message.includes('relation "sbprojects" does not exist')) setErrorMsg(error.message);
       setLoading(false);
-      throw error; // Re-throw for retry mechanism
+      throw error; 
     }
   };
 
@@ -665,7 +663,6 @@ export default function App() {
   useEffect(() => {
     if (!supabase || !currentProject) return;
     
-    // Initial fetch with retry
     fetchWithRetry(fetchFrames);
 
     const channel = supabase.channel(`sbframes_${currentProject.id}`)
@@ -680,7 +677,6 @@ export default function App() {
 
   const fetchFrames = async () => {
     if (!currentProject) return;
-    // Don't set global loading here to avoid flashing, handle internally if needed
     try {
       const { data, error } = await supabase
         .from('sbframes')
@@ -700,15 +696,19 @@ export default function App() {
              
              if (fallbackError) throw fallbackError;
              setFrames(fallbackData || []);
+             setErrorMsg(null);
              return;
         }
         throw error;
       }
       setFrames(data || []);
+      setErrorMsg(null);
     } catch (error) {
       console.error("Erro Supabase:", error);
       setErrorMsg(error.message);
       throw error;
+    } finally {
+      setLoading(false); // GARANTE QUE O LOADING PARA
     }
   };
 
@@ -883,10 +883,29 @@ export default function App() {
                 <Film size={40} className="text-zinc-700" strokeWidth={1} />
             </div>
             <h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2>
-            <p className="text-zinc-600 text-sm mb-8 text-center max-w-md">O Monolito aguarda seus frames.</p>
-            <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-4 font-bold uppercase tracking-widest hover:bg-red-700 transition">
-                Adicionar Frame Inicial
-            </button>
+            <p className="text-zinc-600 text-sm mb-4 text-center max-w-md">O Monolito aguarda seus frames.</p>
+            
+            {/* Mensagem de Erro (Se houver) */}
+            {errorMsg && (
+                <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-xs font-mono max-w-md text-center">
+                    {errorMsg}
+                </div>
+            )}
+
+            <div className="flex gap-4">
+                <button 
+                    onClick={() => fetchFrames()} 
+                    className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"
+                >
+                    <RefreshCw size={16} /> Recarregar
+                </button>
+                <button 
+                    onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} 
+                    className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition"
+                >
+                    Adicionar Frame Inicial
+                </button>
+            </div>
           </div>
         ) : (
           <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : 'grid-cols-1'}`}>
