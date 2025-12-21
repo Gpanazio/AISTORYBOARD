@@ -406,7 +406,6 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
     >
       <div className="relative aspect-video bg-black overflow-hidden" onClick={() => onEdit(data)}>
         {data.image_base64 ? (
-          // REMOVIDO GRAYSCALE AQUI
           <img src={data.image_base64} alt={data.title} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500 select-none pointer-events-none" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-800"><Film size={48} strokeWidth={1} /></div>
@@ -690,7 +689,10 @@ export default function App() {
       <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white">
         <ProjectList 
           projects={projects} 
-          onSelect={setCurrentProject} 
+          onSelect={(project) => {
+             setLoading(true); // Evita o flash de "projeto vazio"
+             setCurrentProject(project);
+          }} 
           onCreate={handleCreateProject} 
           onDelete={handleDeleteProject}
           onUpdate={handleUpdateProject} 
@@ -732,7 +734,15 @@ export default function App() {
       </header>
 
       <main className="p-8 max-w-[1800px] mx-auto">
-        {frames.length === 0 ? (
+        {loading ? (
+            <div className="flex flex-col items-center justify-center h-[60vh] gap-6">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div>
+                    <Loader2 className="animate-spin text-red-600 relative z-10" size={64} />
+                </div>
+                <p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p>
+            </div>
+        ) : frames.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950">
             <div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6">
                 <Film size={40} className="text-zinc-700" strokeWidth={1} />
