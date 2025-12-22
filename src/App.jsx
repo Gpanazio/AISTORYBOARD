@@ -145,7 +145,9 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
       <div className="bg-black p-8 pb-10 border-t border-zinc-900">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title || "SEM TÍTULO"}</h2>
+          {currentFrame.title && (
+            <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title}</h2>
+          )}
           {currentFrame.camera_move && (
             <span className="inline-block bg-red-600 text-white text-[10px] font-bold px-2 py-1 mb-4 uppercase tracking-widest">
               {currentFrame.camera_move}
@@ -499,6 +501,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
   );
 };
 
+// --- COMPONENTE CARD OTIMIZADO ---
 const FrameCard = memo(({ 
     stack, // Agora recebe um ARRAY de frames (Stack)
     onDelete, onEdit, index, 
@@ -678,7 +681,7 @@ const FrameCard = memo(({
         <div className="p-8 flex flex-col justify-center max-w-3xl mx-auto w-full">
             <div className="flex items-center gap-4 mb-4">
                 <div className="bg-red-600 text-white text-sm font-bold px-3 py-1">#{String(index + 1).padStart(2, '0')}</div>
-                <h3 className="text-2xl font-bold text-white uppercase tracking-tight">{data.title || "SEM TÍTULO"}</h3>
+                {data.title && <h3 className="text-2xl font-bold text-white uppercase tracking-tight">{data.title}</h3>}
                 {data.camera_move && <span className="text-[10px] font-bold uppercase tracking-widest bg-zinc-900 text-red-500 px-3 py-1 border border-zinc-800 whitespace-nowrap">{data.camera_move}</span>}
             </div>
             
@@ -692,7 +695,7 @@ const FrameCard = memo(({
       ) : (
         <div className="p-5 flex flex-col flex-1 relative z-10 bg-zinc-950">
             <div className="flex justify-between items-start mb-3 min-h-[24px]">
-                <h3 className="font-bold truncate pr-2 uppercase tracking-tight text-white text-sm">{data.title || "SEM TÍTULO"}</h3>
+                {data.title && <h3 className="font-bold truncate pr-2 uppercase tracking-tight text-white text-sm">{data.title}</h3>}
                 {data.camera_move && <span className="text-[9px] font-bold uppercase tracking-widest bg-zinc-900 text-red-500 px-2 py-0.5 border border-zinc-800 whitespace-nowrap">{data.camera_move}</span>}
             </div>
             <p className="text-zinc-500 text-xs line-clamp-2 mb-4 h-8 font-light">{data.description || ""}</p>
