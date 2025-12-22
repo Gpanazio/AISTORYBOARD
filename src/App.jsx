@@ -23,12 +23,17 @@ import {
   UploadCloud,
   Zap,
   ArrowRight,
-  Layers
+  Layers // Ícone para indicar Stack
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
+
+// --- SQL NECESSÁRIO NO SUPABASE ---
+/*
+  alter table sbframes add column stack_group_id uuid;
+*/
 
 // --- UTILITÁRIOS ---
 
@@ -145,9 +150,7 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
       <div className="bg-black p-8 pb-10 border-t border-zinc-900">
         <div className="max-w-4xl mx-auto text-center">
-          {currentFrame.title && (
-            <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title}</h2>
-          )}
+          <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title || "SEM TÍTULO"}</h2>
           {currentFrame.camera_move && (
             <span className="inline-block bg-red-600 text-white text-[10px] font-bold px-2 py-1 mb-4 uppercase tracking-widest">
               {currentFrame.camera_move}
@@ -501,9 +504,9 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
   );
 };
 
-// --- COMPONENTE CARD OTIMIZADO ---
+// --- COMPONENTE CARD (Stack) ---
 const FrameCard = memo(({ 
-    stack, // Agora recebe um ARRAY de frames (Stack)
+    stack, 
     onDelete, onEdit, index, 
     onDragStart, onDragEnter, onDragEnd, onDragOver,
     onInsert, onManualOrderChange, viewMode,
@@ -578,6 +581,7 @@ const FrameCard = memo(({
   const downloadName = `brickboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
   
   const isListMode = viewMode === 'list';
+  // List Mode = High Res URL. Grid Mode = Thumb (se disponível)
   const imageSource = isListMode 
       ? (data.image_url || data.image_base64) 
       : (data.image_base64 || data.image_url);
@@ -668,6 +672,7 @@ const FrameCard = memo(({
         </div>
         )}
 
+        {/* REMOVIDO BOTÃO "DEFINIR COMO CAPA" */}
         {!isListMode && !isDragOverCard && (
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
                 <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-3 border border-white text-white hover:bg-white hover:text-black transition rounded-full" title="Editar"><Edit3 size={18} /></button>
@@ -694,10 +699,14 @@ const FrameCard = memo(({
         </div>
       ) : (
         <div className="p-5 flex flex-col flex-1 relative z-10 bg-zinc-950">
-            <div className="flex justify-between items-start mb-3 min-h-[24px]">
-                {data.title && <h3 className="font-bold truncate pr-2 uppercase tracking-tight text-white text-sm">{data.title}</h3>}
-                {data.camera_move && <span className="text-[9px] font-bold uppercase tracking-widest bg-zinc-900 text-red-500 px-2 py-0.5 border border-zinc-800 whitespace-nowrap">{data.camera_move}</span>}
-            </div>
+            {/* SÓ MOSTRA SE TIVER TÍTULO OU MOVIMENTO */}
+            {(data.title || data.camera_move) && (
+              <div className="flex justify-between items-start mb-3 min-h-[24px]">
+                  {data.title && <h3 className="font-bold truncate pr-2 uppercase tracking-tight text-white text-sm">{data.title}</h3>}
+                  {data.camera_move && <span className="text-[9px] font-bold uppercase tracking-widest bg-zinc-900 text-red-500 px-2 py-0.5 border border-zinc-800 whitespace-nowrap">{data.camera_move}</span>}
+              </div>
+            )}
+
             <p className="text-zinc-500 text-xs line-clamp-2 mb-4 h-8 font-light">{data.description || ""}</p>
             <div className="mt-auto pt-4 border-t border-zinc-900">
                 <div className="flex items-center justify-between">
@@ -817,6 +826,7 @@ export default function App() {
   const handleUpdateProject = async (id, projectData) => { if (!supabase) return; try { const { error } = await supabase.from('sbprojects').update(projectData).eq('id', id); if (error) throw error; fetchProjects(); } catch (error) { alert("Erro ao atualizar projeto: " + error.message); } };
   const handleDeleteProject = async (id) => { if (!supabase) return; if (!window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) return; const password = window.prompt("Digite a senha de administrador para confirmar a exclusão:"); if (password === "Brick$2016") { const { error } = await supabase.from('sbprojects').delete().eq('id', id); if (error) alert("Erro: " + error.message); else fetchProjects(); } else if (password !== null) { alert("Senha incorreta."); } };
 
+  // --- LOGICA DE FRAMES E AGRUPAMENTO (STACKS) ---
   useEffect(() => {
     if (!supabase || !currentProject) return;
     fetchFrames(true);
@@ -841,8 +851,12 @@ export default function App() {
         .order('order_index', { ascending: true })
         .order('created_at', { ascending: true });
       
-      if (error) { throw error; }
+      if (error) {
+         // Fallback code ... (mantido do original)
+         throw error;
+      }
 
+      // AGRUPAMENTO DE STACKS
       const rawFrames = data || [];
       setExistingTitles(new Set(rawFrames.map(f => f.title)));
 
@@ -877,6 +891,7 @@ export default function App() {
 
   const handleDragOverFile = (e) => { e.preventDefault(); if (e.dataTransfer.types.includes('Files')) setIsDraggingFile(true); };
   const handleDragLeaveFile = (e) => { e.preventDefault(); if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingFile(false); };
+
   const handleDropFile = async (e) => {
     e.preventDefault();
     setIsDraggingFile(false);
@@ -885,6 +900,7 @@ export default function App() {
     if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
     await uploadFilesBatch(files); 
   };
+
   const handleOverlayDrop = async (e) => {
     e.preventDefault(); e.stopPropagation(); setIsDraggingFile(false);
     if (!e.dataTransfer.files) return;
@@ -901,19 +917,40 @@ export default function App() {
     for (let i = 0; i < files.length; i++) {
         setUploadProgress({ current: i + 1, total: files.length });
         const file = files[i];
+
         try {
             const publicUrl = await uploadToStorage(file);
             const thumbBase64 = await generateThumbnail(file); 
             const fileName = formatFileName(file.name);
             const thisOrderIndex = finalGroupId ? (groupedFrames.find(g => g[0].stack_group_id === finalGroupId)?.[0].order_index ?? currentOrderIndex) : currentOrderIndex + i;
 
-            const frameData = { title: fileName, description: '', prompt: '', camera_move: '', image_url: publicUrl, image_base64: thumbBase64, project_id: currentProject.id, order_index: thisOrderIndex, stack_group_id: finalGroupId, updated_at: new Date() };
+            const frameData = {
+                title: fileName,
+                description: '',
+                prompt: '',
+                camera_move: '',
+                image_url: publicUrl, 
+                image_base64: thumbBase64, 
+                project_id: currentProject.id,
+                order_index: thisOrderIndex,
+                stack_group_id: finalGroupId, 
+                updated_at: new Date()
+            };
+
             const { error } = await supabase.from('sbframes').insert([frameData]);
-            if (error) { console.error(`Erro BD:`, error); failCount++; } else { successCount++; }
+            
+            if (error) { console.error(`Erro BD:`, error); failCount++; } 
+            else { successCount++; }
+
         } catch (err) { console.error("Erro Geral:", err); failCount++; }
     }
-    setUploadProgress(null); setInsertAtIndex(null); 
-    if (successCount > 0) { if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current); fetchTimeoutRef.current = setTimeout(() => fetchFrames(true), 500); }
+
+    setUploadProgress(null);
+    setInsertAtIndex(null); 
+    if (successCount > 0) {
+        if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+        fetchTimeoutRef.current = setTimeout(() => fetchFrames(true), 500);
+    }
   };
 
   const handleDropOnCard = async (files, targetFrameIdOrGroupId) => {
@@ -929,6 +966,7 @@ export default function App() {
   };
 
   const handleDragStart = (e, position) => { dragItem.current = position; };
+  
   const handleDragEnter = (e, position) => {
     e.preventDefault();
     if (dragItem.current === null || dragItem.current === undefined) return;
@@ -941,19 +979,37 @@ export default function App() {
     dragItem.current = position;
     setGroupedFrames(copyList);
   };
+  
   const handleDragOver = (e) => { e.preventDefault(); handleAutoScroll(e); };
-  const handleDragEnd = async () => { stopAutoScroll(); dragItem.current = null; dragOverItem.current = null; saveNewOrder(groupedFrames); };
+  
+  const handleDragEnd = async () => { 
+    stopAutoScroll();
+    dragItem.current = null; 
+    dragOverItem.current = null; 
+    saveNewOrder(groupedFrames);
+  };
+
   const saveNewOrder = useCallback(async (newGroupedFrames) => {
      if (!supabase) return;
      if (saveOrderTimeoutRef.current) clearTimeout(saveOrderTimeoutRef.current);
+
      saveOrderTimeoutRef.current = setTimeout(async () => {
         let updates = [];
         newGroupedFrames.forEach((stack, stackIndex) => {
             stack.forEach(frame => {
-                updates.push({ id: frame.id, order_index: stackIndex, project_id: currentProject.id, updated_at: new Date() });
+                updates.push({
+                    id: frame.id,
+                    order_index: stackIndex, 
+                    project_id: currentProject.id, 
+                    updated_at: new Date()
+                });
             });
         });
-        try { const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' }); if (error) throw error; } catch (error) { console.error("Erro ao salvar ordem:", error); }
+
+        try {
+            const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' });
+            if (error) throw error;
+        } catch (error) { console.error("Erro ao salvar ordem:", error); }
      }, 2000); 
   }, [currentProject, supabase]);
 
@@ -1008,6 +1064,7 @@ export default function App() {
     <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" onDragOver={handleDragOverFile} onDragLeave={handleDragLeaveFile} onDrop={handleDropFile}>
       {isDraggingFile && (<div className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center pointer-events-none"><UploadCloud size={80} className="text-red-600 mb-4 animate-bounce pointer-events-none" /><h2 className="text-3xl font-bold text-white uppercase tracking-widest pointer-events-none">Soltar Frames Aqui</h2><p className="text-zinc-500 mt-2 pointer-events-none">Criar novos ou solte sobre um card para agrupar</p></div>)}
       {uploadProgress && (<div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up"><Loader2 className="animate-spin text-red-600" size={24} /><div><p className="text-xs font-bold text-white uppercase tracking-widest">Enviando...</p><p className="text-xs text-zinc-500">{uploadProgress.current}/{uploadProgress.total} arquivos</p></div></div>)}
+      
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
         <div className="flex items-center gap-4">
@@ -1016,6 +1073,7 @@ export default function App() {
            <button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button>
         </div>
       </header>
+
       <main className="p-8 max-w-[1800px] mx-auto min-h-[calc(100vh-100px)]">
         {loading ? (<div className="flex flex-col items-center justify-center h-[60vh] gap-6"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p></div>) : groupedFrames.length === 0 ? (<div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950"><div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6"><Film size={40} className="text-zinc-700" strokeWidth={1} /></div><h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2><p className="text-zinc-600 text-sm mb-4 text-center max-w-md">Arraste seus frames para cá ou adicione manualmente.</p><div className="flex gap-4"><button onClick={() => fetchFrames(true)} className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"><RefreshCw size={16} /> Recarregar</button><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition">Adicionar Frame Inicial</button></div></div>) : (
           <div className={viewMode === 'grid' ? "grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" : "flex flex-col gap-12 max-w-4xl mx-auto"}>
