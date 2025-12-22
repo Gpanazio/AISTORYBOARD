@@ -30,11 +30,6 @@ import {
 const SUPABASE_URL = 'https://ujpvyslrosmismgbcczl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqcHZ5c2xyb3NtaXNtZ2JjY3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3NzU5MDgsImV4cCI6MjA2NjM1MTkwOH0.XkgwQ4VF7_7plt8-cw9VsatX4WwLolZEO6a6YtovUFs';
 
-// --- SQL NECESSÁRIO NO SUPABASE ---
-/*
-  alter table sbframes add column stack_group_id uuid;
-*/
-
 // --- UTILITÁRIOS ---
 
 const convertFileToBase64 = (file) => {
@@ -381,7 +376,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
   );
 };
 
-const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingTitles }) => {
+const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingTitles, onAddVariation }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -390,6 +385,8 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
     image: null,
     imagePreview: null
   });
+
+  const [isAddingVariation, setIsAddingVariation] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -429,6 +426,17 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
     }
   };
 
+  const handleVariationChange = async (e) => {
+      const file = e.target.files[0];
+      if (file && onAddVariation && initialData) {
+          setIsAddingVariation(true);
+          await onAddVariation(initialData, file);
+          setIsAddingVariation(false);
+          // Opcional: fechar modal ou dar feedback
+          alert("Variação adicionada à pilha!");
+      }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave(formData);
@@ -452,12 +460,26 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
               <p className="text-xs uppercase tracking-widest">Nenhuma imagem selecionada</p>
             </div>
           )}
-          <label className="absolute inset-0 flex items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-            <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-            <div className="border border-red-600 px-6 py-3 text-red-500 text-xs font-bold uppercase tracking-widest hover:bg-red-600 hover:text-white transition">
-              {formData.imagePreview ? 'Trocar Imagem' : 'Selecionar Frame'}
-            </div>
-          </label>
+          
+          {/* OVERLAY DE AÇÕES NA IMAGEM */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity gap-4">
+            
+            {/* Botão Principal: Trocar/Selecionar Imagem */}
+            <label className="cursor-pointer border border-white/50 px-8 py-3 text-white text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black transition flex items-center gap-2">
+                <RefreshCw size={14} />
+                <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                {formData.imagePreview ? 'Trocar Imagem Atual' : 'Selecionar Frame'}
+            </label>
+
+            {/* Botão Secundário: Adicionar Variação (Apenas se já existir frame salvo) */}
+            {initialData && (
+                <label className={`cursor-pointer border border-red-600 px-8 py-3 text-red-500 text-xs font-bold uppercase tracking-widest hover:bg-red-600 hover:text-white transition flex items-center gap-2 ${isAddingVariation ? 'opacity-50 cursor-wait' : ''}`}>
+                    {isAddingVariation ? <Loader2 size={14} className="animate-spin" /> : <Layers size={14} />}
+                    <input type="file" accept="image/*" onChange={handleVariationChange} className="hidden" disabled={isAddingVariation} />
+                    Adicionar Variação (Stack)
+                </label>
+            )}
+          </div>
         </div>
 
         {/* Coluna Dados (Formulário) - 25% da largura */}
@@ -504,18 +526,16 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
   );
 };
 
-// --- COMPONENTE CARD (Stack) ---
+// --- COMPONENTE CARD OTIMIZADO ---
 const FrameCard = memo(({ 
     stack, 
     onDelete, onEdit, index, 
     onDragStart, onDragEnter, onDragEnd, onDragOver,
-    onInsert, onManualOrderChange, viewMode,
-    onDropOnCard
+    onInsert, onManualOrderChange, viewMode
 }) => {
   const [copied, setCopied] = useState(false);
   const [tempOrder, setTempOrder] = useState(index + 1);
   const [localStackIndex, setLocalStackIndex] = useState(0);
-  const [isDragOverCard, setIsDragOverCard] = useState(false);
 
   useEffect(() => {
     setTempOrder(index + 1);
@@ -565,23 +585,9 @@ const FrameCard = memo(({
       }
   };
 
-  const handleCardDrop = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragOverCard(false);
-      
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-          if (files.length > 0) {
-              onDropOnCard(files, data.stack_group_id || data.id);
-          }
-      }
-  };
-
   const downloadName = `brickboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
   
   const isListMode = viewMode === 'list';
-  // List Mode = High Res URL. Grid Mode = Thumb (se disponível)
   const imageSource = isListMode 
       ? (data.image_url || data.image_base64) 
       : (data.image_base64 || data.image_url);
@@ -591,7 +597,6 @@ const FrameCard = memo(({
   return (
     <div 
       className={`group relative bg-zinc-950 border transition-all duration-300 flex flex-col h-full ${isListMode ? 'w-full border-zinc-900 border-b-zinc-800' : 'border-zinc-900 hover:border-red-600'}`}
-      style={{ borderColor: isDragOverCard ? '#DC2626' : undefined, borderStyle: isDragOverCard ? 'dashed' : undefined }}
     >
         {/* Efeito Visual de Pilha (Stack) - Apenas Grid */}
         {hasVariations && !isListMode && (
@@ -619,10 +624,7 @@ const FrameCard = memo(({
         onDragOver={(e) => { 
             e.preventDefault(); 
             if(onDragOver) onDragOver(e); 
-            if (e.dataTransfer.types.includes('Files')) setIsDragOverCard(true);
         }}
-        onDragLeave={() => setIsDragOverCard(false)}
-        onDrop={handleCardDrop}
       >
         {imageSource ? (
           <img 
@@ -638,14 +640,8 @@ const FrameCard = memo(({
           </div>
         )}
         
-        {isDragOverCard && (
-            <div className="absolute inset-0 bg-red-600/80 z-50 flex items-center justify-center flex-col text-white animate-pulse pointer-events-none">
-                <Layers size={32} className="mb-2" />
-                <span className="text-xs font-bold uppercase tracking-widest">Adicionar à Pilha</span>
-            </div>
-        )}
 
-        {hasVariations && !isDragOverCard && !isListMode && (
+        {hasVariations && !isListMode && (
             <>
                 <button onClick={(e) => handleStackNav('prev', e)} className="absolute left-0 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white hover:bg-black/50 transition z-30"><ChevronLeft size={24} /></button>
                 <button onClick={(e) => handleStackNav('next', e)} className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-white/50 hover:text-white hover:bg-black/50 transition z-30"><ChevronRight size={24} /></button>
@@ -672,11 +668,16 @@ const FrameCard = memo(({
         </div>
         )}
 
-        {/* REMOVIDO BOTÃO "DEFINIR COMO CAPA" */}
-        {!isListMode && !isDragOverCard && (
+        {!isListMode && (
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
                 <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-3 border border-white text-white hover:bg-white hover:text-black transition rounded-full" title="Editar"><Edit3 size={18} /></button>
-                <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-red-500 hover:text-red-500 transition rounded-full" title="Excluir"><Trash2 size={18} /></button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} 
+                  className="p-3 border border-zinc-500 text-zinc-500 hover:border-red-500 hover:text-red-500 transition rounded-full" 
+                  title={hasVariations ? "Excluir Variação Atual" : "Excluir Frame"}
+                >
+                  <Trash2 size={18} />
+                </button>
             </div>
         )}
       </div>
@@ -953,20 +954,50 @@ export default function App() {
     }
   };
 
-  const handleDropOnCard = async (files, targetFrameIdOrGroupId) => {
-      const targetStack = groupedFrames.find(stack => stack.some(f => f.id === targetFrameIdOrGroupId || f.stack_group_id === targetFrameIdOrGroupId));
-      if (!targetStack) return;
-      let groupId = targetStack[0].stack_group_id;
-      if (!groupId) {
-          groupId = crypto.randomUUID(); 
-          const { error } = await supabase.from('sbframes').update({ stack_group_id: groupId }).eq('id', targetStack[0].id);
-          if (error) { alert("Erro ao criar stack: " + error.message); return; }
+  const handleAddStackVariation = async (sourceFrame, file) => {
+      if(!supabase || !currentProject) return;
+      try {
+          // 1. Upload e Thumb
+          const publicUrl = await uploadToStorage(file);
+          const thumbBase64 = await generateThumbnail(file); 
+          const fileName = formatFileName(file.name);
+
+          // 2. Definir Grupo (Criar se não existe)
+          let groupId = sourceFrame.stack_group_id;
+          
+          if (!groupId) {
+             groupId = crypto.randomUUID();
+             // Atualiza frame original para entrar no grupo
+             await supabase.from('sbframes').update({ stack_group_id: groupId }).eq('id', sourceFrame.id);
+          }
+
+          // 3. Criar Novo Frame
+          const frameData = {
+              title: fileName,
+              description: '',
+              prompt: '',
+              camera_move: '',
+              image_url: publicUrl, 
+              image_base64: thumbBase64, 
+              project_id: currentProject.id,
+              order_index: sourceFrame.order_index, // Mesmo indice visual
+              stack_group_id: groupId, 
+              updated_at: new Date()
+          };
+
+          const { error } = await supabase.from('sbframes').insert([frameData]);
+          if(error) throw error;
+          
+          // Refresh
+          fetchFrames(false);
+
+      } catch(err) {
+          console.error("Erro ao adicionar variação:", err);
+          alert("Erro: " + err.message);
       }
-      await uploadFilesBatch(files, groupId);
   };
 
   const handleDragStart = (e, position) => { dragItem.current = position; };
-  
   const handleDragEnter = (e, position) => {
     e.preventDefault();
     if (dragItem.current === null || dragItem.current === undefined) return;
@@ -979,37 +1010,19 @@ export default function App() {
     dragItem.current = position;
     setGroupedFrames(copyList);
   };
-  
   const handleDragOver = (e) => { e.preventDefault(); handleAutoScroll(e); };
-  
-  const handleDragEnd = async () => { 
-    stopAutoScroll();
-    dragItem.current = null; 
-    dragOverItem.current = null; 
-    saveNewOrder(groupedFrames);
-  };
-
+  const handleDragEnd = async () => { stopAutoScroll(); dragItem.current = null; dragOverItem.current = null; saveNewOrder(groupedFrames); };
   const saveNewOrder = useCallback(async (newGroupedFrames) => {
      if (!supabase) return;
      if (saveOrderTimeoutRef.current) clearTimeout(saveOrderTimeoutRef.current);
-
      saveOrderTimeoutRef.current = setTimeout(async () => {
         let updates = [];
         newGroupedFrames.forEach((stack, stackIndex) => {
             stack.forEach(frame => {
-                updates.push({
-                    id: frame.id,
-                    order_index: stackIndex, 
-                    project_id: currentProject.id, 
-                    updated_at: new Date()
-                });
+                updates.push({ id: frame.id, order_index: stackIndex, project_id: currentProject.id, updated_at: new Date() });
             });
         });
-
-        try {
-            const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' });
-            if (error) throw error;
-        } catch (error) { console.error("Erro ao salvar ordem:", error); }
+        try { const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' }); if (error) throw error; } catch (error) { console.error("Erro ao salvar ordem:", error); }
      }, 2000); 
   }, [currentProject, supabase]);
 
@@ -1064,7 +1077,6 @@ export default function App() {
     <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" onDragOver={handleDragOverFile} onDragLeave={handleDragLeaveFile} onDrop={handleDropFile}>
       {isDraggingFile && (<div className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center pointer-events-none"><UploadCloud size={80} className="text-red-600 mb-4 animate-bounce pointer-events-none" /><h2 className="text-3xl font-bold text-white uppercase tracking-widest pointer-events-none">Soltar Frames Aqui</h2><p className="text-zinc-500 mt-2 pointer-events-none">Criar novos ou solte sobre um card para agrupar</p></div>)}
       {uploadProgress && (<div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up"><Loader2 className="animate-spin text-red-600" size={24} /><div><p className="text-xs font-bold text-white uppercase tracking-widest">Enviando...</p><p className="text-xs text-zinc-500">{uploadProgress.current}/{uploadProgress.total} arquivos</p></div></div>)}
-      
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
         <div className="flex items-center gap-4">
@@ -1073,16 +1085,15 @@ export default function App() {
            <button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button>
         </div>
       </header>
-
       <main className="p-8 max-w-[1800px] mx-auto min-h-[calc(100vh-100px)]">
         {loading ? (<div className="flex flex-col items-center justify-center h-[60vh] gap-6"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p></div>) : groupedFrames.length === 0 ? (<div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950"><div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6"><Film size={40} className="text-zinc-700" strokeWidth={1} /></div><h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2><p className="text-zinc-600 text-sm mb-4 text-center max-w-md">Arraste seus frames para cá ou adicione manualmente.</p><div className="flex gap-4"><button onClick={() => fetchFrames(true)} className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"><RefreshCw size={16} /> Recarregar</button><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition">Adicionar Frame Inicial</button></div></div>) : (
           <div className={viewMode === 'grid' ? "grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" : "flex flex-col gap-12 max-w-4xl mx-auto"}>
-            {groupedFrames.map((stack, index) => (<FrameCard key={stack[0].id} stack={stack} index={index} onDelete={handleDeleteFrame} onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} onDragStart={handleDragStart} onDragEnter={handleDragEnter} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onInsert={handleInsertAt} onManualOrderChange={handleManualOrderChange} viewMode={viewMode} onDropOnCard={handleDropOnCard} />))}
+            {groupedFrames.map((stack, index) => (<FrameCard key={stack[0].id} stack={stack} index={index} onDelete={handleDeleteFrame} onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} onDragStart={handleDragStart} onDragEnter={handleDragEnter} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onInsert={handleInsertAt} onManualOrderChange={handleManualOrderChange} viewMode={viewMode} />))}
             {viewMode === 'grid' && (<button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="group relative bg-zinc-950 border border-dashed border-zinc-800 hover:border-red-600/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[350px]"><div className="w-full h-full flex flex-col items-center justify-center"><div className="w-16 h-16 bg-zinc-900 group-hover:bg-red-600 flex items-center justify-center transition-colors mb-6 rounded-full group-hover:shadow-[0_0_15px_rgba(220,38,38,0.5)]"><Plus className="text-zinc-500 group-hover:text-white" size={32} /></div><span className="text-zinc-500 font-bold text-xs uppercase tracking-widest group-hover:text-red-500 transition-colors">Adicionar Frame</span></div></button>)}
           </div>
         )}
       </main>
-      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} existingTitles={existingTitles} />
+      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} existingTitles={existingTitles} onAddVariation={handleAddStackVariation} />
       {carouselOpen && (<CarouselModal frames={flatFramesForCarousel} initialIndex={carouselStartIndex} onClose={() => setCarouselOpen(false)} />)}
     </div>
   );
