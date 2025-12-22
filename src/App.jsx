@@ -28,7 +28,8 @@ import {
   RefreshCw,
   UploadCloud,
   Zap,
-  ArrowRight
+  ArrowRight,
+  Wand2 // Ícone para Otimizar
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -37,7 +38,6 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // --- UTILITÁRIOS ---
 
-// Gera um arquivo Base64 do original (apenas para preview local rápido ou upload de capa)
 const convertFileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -47,36 +47,41 @@ const convertFileToBase64 = (file) => {
   });
 };
 
-// NOVA FUNÇÃO: Gera uma miniatura leve (max 300px) para o Grid
-const generateThumbnail = (file) => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxWidth = 350; // Tamanho ideal para o card do grid
-        let width = img.width;
-        let height = img.height;
+// Gera miniatura a partir de um File OU de uma URL/Base64 já existente
+const generateThumbnailFromSrc = (source) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous"; // Permite manipular imagens do Storage
+    img.src = source;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const maxWidth = 350;
+      let width = img.width;
+      let height = img.height;
 
-        // Calcula proporção
-        if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-        }
+      if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+      }
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        // Desenha redimensionado
-        ctx.drawImage(img, 0, 0, width, height);
-        // Retorna JPEG otimizado (qualidade 0.7)
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.6)); // Compressão mais agressiva para thumbs
     };
-    reader.readAsDataURL(file);
+    img.onerror = (err) => reject(err);
   });
+};
+
+const generateThumbnail = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+         generateThumbnailFromSrc(e.target.result).then(resolve);
+      };
+      reader.readAsDataURL(file);
+    });
 };
 
 
@@ -117,7 +122,7 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
   if (!currentFrame) return null;
 
-  // No Carrossel (Tela Cheia), usamos a URL original (Alta Resolução)
+  // No Carrossel, prioriza a URL (Storage) para qualidade máxima
   const imageSource = currentFrame.image_url || currentFrame.image_base64;
 
   return (
@@ -210,7 +215,6 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
     let coverBase64 = editingProject?.cover_image;
 
     if (coverImage) {
-      // Para capa de projeto, usamos uma compressão média pois não precisa ser 4K
       coverBase64 = await generateThumbnail(coverImage); 
     }
 
@@ -542,7 +546,6 @@ const FrameCard = memo(({
   const downloadName = `brickboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
   
   // AQUI A MÁGICA: Prioriza a thumbnail (base64) para o card, se existir. 
-  // Se não, usa a URL completa (fallback). Isso deixa o grid leve.
   const imageSource = data.image_base64 || data.image_url;
   // Link de download sempre aponta para a URL original (alta qualidade)
   const originalSource = data.image_url || data.image_base64;
@@ -584,17 +587,19 @@ const FrameCard = memo(({
         )}
         
         {/* BADGE NUMÉRICO EDITÁVEL */}
-        <div className="absolute top-0 left-0 bg-red-600 text-white z-20 shadow-lg flex items-center"
+        <div 
+            className="absolute top-0 left-0 bg-red-600 text-white z-20 shadow-lg flex items-center cursor-text hover:bg-red-700 transition-colors group/badge"
              onClick={(e) => e.stopPropagation()} 
+             title="Clique para mudar a ordem"
         >
-          <span className="pl-2 pr-1 text-[10px] font-bold">#</span>
+          <span className="pl-2 pr-0.5 text-[10px] font-bold opacity-70">#</span>
           <input 
             type="text"
             value={tempOrder}
             onChange={(e) => setTempOrder(e.target.value)}
             onKeyDown={handleOrderSubmit}
             onBlur={handleOrderBlur}
-            className="w-8 bg-transparent text-white text-[10px] font-bold focus:outline-none focus:bg-red-700 text-center py-1 pr-1"
+            className="w-8 bg-transparent text-white text-[10px] font-bold focus:outline-none text-center py-1 pr-1 cursor-text selection:bg-white selection:text-red-600"
           />
         </div>
         
@@ -657,6 +662,7 @@ export default function App() {
   
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   
   const [insertAtIndex, setInsertAtIndex] = useState(null);
 
@@ -680,6 +686,54 @@ export default function App() {
           console.error("Erro no upload:", error);
           throw error;
       }
+  };
+
+  const handleOptimizeThumbnails = async () => {
+    if (!supabase || !currentProject) return;
+    if (!window.confirm("Essa ação vai gerar miniaturas leves para frames antigos que estão lentos. Pode demorar. Continuar?")) return;
+
+    setIsOptimizing(true);
+    let count = 0;
+    try {
+        const framesToFix = frames.filter(f => 
+            // Critério 1: Tem base64 e ele é GIGANTE (> 100kb, assumindo que thumb deve ser leve)
+            (f.image_base64 && f.image_base64.length > 150000) ||
+            // Critério 2: Tem URL mas NÃO tem base64 (só tem a original pesada)
+            (f.image_url && !f.image_base64)
+        );
+
+        if (framesToFix.length === 0) {
+            alert("Todos os frames parecem já estar otimizados!");
+            setIsOptimizing(false);
+            return;
+        }
+
+        for (const frame of framesToFix) {
+            try {
+                // Fonte: URL (se tiver) ou o próprio base64 pesado
+                const source = frame.image_url || frame.image_base64;
+                if (!source) continue;
+
+                const thumb = await generateThumbnailFromSrc(source);
+                
+                await supabase
+                    .from('sbframes')
+                    .update({ image_base64: thumb }) // Atualiza apenas o thumb leve
+                    .eq('id', frame.id);
+                
+                count++;
+            } catch (e) {
+                console.error("Erro ao otimizar frame:", frame.id, e);
+            }
+        }
+        alert(`${count} miniaturas geradas com sucesso! A página deve ficar mais rápida.`);
+        fetchFrames(true);
+
+    } catch (err) {
+        alert("Erro na otimização: " + err.message);
+    } finally {
+        setIsOptimizing(false);
+    }
   };
 
   const fetchWithRetry = async (fn, retries = 5, delay = 1000) => {
@@ -1143,7 +1197,19 @@ export default function App() {
       {uploadProgress && (<div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up"><Loader2 className="animate-spin text-red-600" size={24} /><div><p className="text-xs font-bold text-white uppercase tracking-widest">Enviando...</p><p className="text-xs text-zinc-500">{uploadProgress.current}/{uploadProgress.total} arquivos</p></div></div>)}
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
-        <div className="flex items-center gap-4"><div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div><button onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }} className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"><Play size={14} /> Apresentar</button><div className="hidden md:flex bg-zinc-950 border border-zinc-800"><button onClick={() => setViewMode('grid')} className={`p-3 ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Maximize2 size={18} /></button><button onClick={() => setViewMode('list')} className={`p-3 ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Move size={18} /></button></div><button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button></div>
+        <div className="flex items-center gap-4">
+           {/* Botão de Otimização */}
+           <button 
+             onClick={handleOptimizeThumbnails}
+             className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white p-3 rounded transition border border-zinc-800"
+             title="Otimizar Miniaturas (Deixar Rápido)"
+             disabled={isOptimizing}
+           >
+             {isOptimizing ? <Loader2 size={18} className="animate-spin" /> : <Wand2 size={18} />}
+           </button>
+
+           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div>
+           <button onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }} className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"><Play size={14} /> Apresentar</button><div className="hidden md:flex bg-zinc-950 border border-zinc-800"><button onClick={() => setViewMode('grid')} className={`p-3 ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Maximize2 size={18} /></button><button onClick={() => setViewMode('list')} className={`p-3 ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Move size={18} /></button></div><button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button></div>
       </header>
       <main className="p-8 max-w-[1800px] mx-auto min-h-[calc(100vh-100px)]">
         {loading ? (<div className="flex flex-col items-center justify-center h-[60vh] gap-6"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p></div>) : frames.length === 0 ? (<div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950"><div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6"><Film size={40} className="text-zinc-700" strokeWidth={1} /></div><h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2><p className="text-zinc-600 text-sm mb-4 text-center max-w-md">Arraste seus frames para cá ou adicione manualmente.</p>{errorMsg && (<div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-xs font-mono max-w-md text-center">{errorMsg}</div>)}<div className="flex gap-4"><button onClick={() => fetchFrames(true)} className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"><RefreshCw size={16} /> Recarregar</button><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition">Adicionar Frame Inicial</button></div></div>) : (
