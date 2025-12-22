@@ -26,8 +26,7 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
-  UploadCloud,
-  Zap // Ícone para Migração
+  UploadCloud
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -43,13 +42,6 @@ const convertFileToBase64 = (file) => {
     reader.onload = () => resolve(reader.result);
     reader.onerror = (error) => reject(error);
   });
-};
-
-// Converte Base64 de volta para Blob (para migração)
-const base64ToBlob = async (base64Data) => {
-  const res = await fetch(base64Data);
-  const blob = await res.blob();
-  return blob;
 };
 
 const copyToClipboard = (text) => {
@@ -138,7 +130,7 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
   );
 };
 
-const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading, onRefresh, onMigrate, isMigrating }) => {
+const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading, onRefresh }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [title, setTitle] = useState('');
@@ -179,8 +171,6 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
     e.preventDefault();
     if (!title.trim()) return;
     
-    // NOTA: Para projetos, mantive Base64 por enquanto pois são imagens únicas e leves (thumbs).
-    // Se quiser migrar capa para Storage também, o processo é similar ao dos frames.
     let coverBase64 = editingProject?.cover_image;
 
     if (coverImage) {
@@ -209,16 +199,6 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
           <p className="text-zinc-500 text-xs tracking-widest uppercase">Storyboard System</p>
         </div>
         <div className="flex gap-4">
-            {/* Botão de Migração */}
-            <button 
-                onClick={onMigrate}
-                disabled={isMigrating}
-                className="bg-yellow-600/20 hover:bg-yellow-600 hover:text-white text-yellow-500 px-4 py-3 font-bold flex items-center gap-2 transition text-sm tracking-wide uppercase border border-yellow-600/50 disabled:opacity-50"
-                title="Migrar Imagens Antigas para Storage"
-            >
-                {isMigrating ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-            </button>
-
             <button 
                 onClick={onRefresh}
                 className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white px-4 py-3 font-bold flex items-center gap-2 transition text-sm tracking-wide uppercase border border-zinc-800"
@@ -409,12 +389,14 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
 
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-950 border border-zinc-800 w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col md:flex-row overflow-hidden relative">
+      {/* Modal Widescreen */}
+      <div className="bg-zinc-950 border border-zinc-800 w-full max-w-[95vw] h-[90vh] shadow-2xl flex flex-col md:flex-row overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900 z-10"></div>
         
-        <div className="w-full md:w-1/2 bg-black flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-zinc-900 relative group">
+        {/* Coluna Visual (Imagem) - 75% da largura */}
+        <div className="w-full md:w-3/4 bg-black flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-zinc-900 relative group">
           {formData.imagePreview ? (
-            <img src={formData.imagePreview} alt="Preview" className="w-full h-full object-contain p-8" />
+            <img src={formData.imagePreview} alt="Preview" className="w-full h-full object-contain p-4 md:p-8" />
           ) : (
             <div className="text-zinc-700 flex flex-col items-center">
               <ImageIcon size={64} strokeWidth={1} className="mb-4" />
@@ -429,30 +411,29 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
           </label>
         </div>
 
-        <div className="w-full md:w-1/2 p-8 flex flex-col bg-zinc-950 overflow-y-auto">
-          <div className="flex justify-between items-center mb-8 border-b border-zinc-900 pb-4">
-            <h2 className="text-xl font-bold text-white tracking-tight uppercase">
+        {/* Coluna Dados (Formulário) - 25% da largura */}
+        <div className="w-full md:w-1/4 p-6 flex flex-col bg-zinc-950 overflow-y-auto border-l border-zinc-900">
+          <div className="flex justify-between items-center mb-6 border-b border-zinc-900 pb-4">
+            <h2 className="text-lg font-bold text-white tracking-tight uppercase">
               {initialData ? 'EDITAR FRAME' : 'NOVO FRAME'}
             </h2>
-            <button onClick={onClose} className="text-zinc-500 hover:text-white transition"><X size={24} /></button>
+            <button onClick={onClose} className="text-zinc-500 hover:text-white transition"><X size={20} /></button>
           </div>
           
-          <form onSubmit={handleSubmit} className="flex-1 space-y-6">
+          <form onSubmit={handleSubmit} className="flex-1 space-y-5">
             <div>
               <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">CENA / TÍTULO</label>
-              <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none transition-colors" placeholder="Cena 1 - O Monolito" />
+              <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none transition-colors text-sm" placeholder="Cena 1 - O Monolito" />
             </div>
             
             <div>
               <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">DESCRIÇÃO</label>
-              <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none h-24 resize-none transition-colors" />
+              <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none h-24 resize-none transition-colors text-sm" />
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div>
+            <div>
                 <label className="block text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">MOVIMENTO</label>
                 <input type="text" value={formData.cameraMove} onChange={e => setFormData({...formData, cameraMove: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-white focus:border-red-600 outline-none transition-colors text-sm" placeholder="ZOOM IN" />
-              </div>
             </div>
             
             <div>
@@ -460,9 +441,9 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
               <textarea value={formData.prompt} onChange={e => setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-zinc-300 font-mono text-xs focus:border-red-600 outline-none h-32 resize-none transition-colors" />
             </div>
             
-            <div className="pt-6 flex justify-end gap-4 border-t border-zinc-900 mt-auto">
-              <button type="button" onClick={onClose} className="px-6 py-3 text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">Cancelar</button>
-              <button type="submit" disabled={isSaving} className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 text-xs font-bold uppercase tracking-widest transition disabled:opacity-50 flex items-center gap-2">
+            <div className="pt-6 flex justify-end gap-3 border-t border-zinc-900 mt-auto">
+              <button type="button" onClick={onClose} className="px-4 py-3 text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">Cancelar</button>
+              <button type="submit" disabled={isSaving} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 text-xs font-bold uppercase tracking-widest transition disabled:opacity-50 flex items-center gap-2">
                 {isSaving && <Loader2 className="animate-spin" size={14} />}
                 Salvar
               </button>
@@ -570,7 +551,6 @@ export default function App() {
   
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
-  const [isMigrating, setIsMigrating] = useState(false);
 
   const dragItem = useRef();
   const dragOverItem = useRef();
@@ -598,71 +578,6 @@ export default function App() {
           console.error("Erro no upload:", error);
           throw error;
       }
-  };
-
-  const handleMigration = async () => {
-    if (!supabase) return;
-    if (!window.confirm("Iniciar migração de imagens antigas para o novo Storage? Isso pode levar alguns minutos.")) return;
-
-    setIsMigrating(true);
-    try {
-        // 1. Buscar APENAS IDs (leve) para não travar o banco
-        const { data: framesIds, error } = await supabase
-            .from('sbframes')
-            .select('id')
-            .not('image_base64', 'is', null)
-            .is('image_url', null)
-            .limit(10); // Processa de 10 em 10 para segurança
-
-        if (error) throw error;
-
-        if (!framesIds || framesIds.length === 0) {
-            alert("Nenhuma imagem pendente de migração encontrada neste lote.");
-            setIsMigrating(false);
-            return;
-        }
-
-        let successCount = 0;
-
-        for (const frameIdObj of framesIds) {
-            try {
-                // Busca dados PESADOS individualmente
-                const { data: frameData, error: frameError } = await supabase
-                    .from('sbframes')
-                    .select('image_base64')
-                    .eq('id', frameIdObj.id)
-                    .single();
-                
-                if (frameError || !frameData) continue;
-
-                // Converter base64 para Blob
-                const blob = await base64ToBlob(frameData.image_base64);
-                const file = new File([blob], `migrated_${frameIdObj.id}.png`, { type: 'image/png' });
-                
-                // Upload para Storage
-                const publicUrl = await uploadToStorage(file);
-
-                // Atualizar banco (limpa o pesado e põe o leve)
-                if (publicUrl) {
-                    await supabase
-                        .from('sbframes')
-                        .update({ image_url: publicUrl, image_base64: null }) 
-                        .eq('id', frameIdObj.id);
-                    successCount++;
-                }
-            } catch (err) {
-                console.error(`Falha ao migrar frame ${frameIdObj.id}:`, err);
-            }
-        }
-
-        alert(`Lote concluído! ${successCount} imagens migradas. Clique novamente no raio para continuar.`);
-        if (currentProject) fetchFrames(true);
-
-    } catch (err) {
-        alert("Erro na migração: " + err.message);
-    } finally {
-        setIsMigrating(false);
-    }
   };
 
   const fetchWithRetry = async (fn, retries = 5, delay = 1000) => {
@@ -958,8 +873,6 @@ export default function App() {
             onUpdate={handleUpdateProject} 
             loading={loading} 
             onRefresh={() => fetchProjects(true)}
-            onMigrate={handleMigration}
-            isMigrating={isMigrating}
         />
       </div>
     );
