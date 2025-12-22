@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -286,7 +286,6 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {projects.map(project => {
-            // SAFEGUARD: Se project for undefined ou não tiver id, ignora
             if (!project || !project.id) return null;
 
             return (
@@ -461,7 +460,8 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
   );
 };
 
-const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd, onSetCover, onDragOver }) => {
+// Usando React.memo para evitar re-renderizações desnecessárias
+const FrameCard = memo(({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd, onSetCover, onDragOver }) => {
   const [copied, setCopied] = useState(false);
   
   const handleCopyPrompt = () => {
@@ -487,7 +487,13 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
     >
       <div className="relative aspect-video bg-black overflow-hidden" onClick={() => onEdit(data)}>
         {imageSource ? (
-          <img src={imageSource} alt={data.title} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500 select-none pointer-events-none" />
+          <img 
+            src={imageSource} 
+            alt={data.title} 
+            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500 select-none pointer-events-none" 
+            loading="lazy" 
+            decoding="async"
+          />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-zinc-800 gap-2">
               <span className="text-[10px] uppercase font-bold text-zinc-700">Sem Imagem</span>
@@ -535,7 +541,7 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
       </div>
     </div>
   );
-};
+});
 
 export default function App() {
   const [supabase, setSupabase] = useState(null);
@@ -560,9 +566,8 @@ export default function App() {
 
   const dragItem = useRef();
   const dragOverItem = useRef();
-  
-  // Ref para o Auto Scroll
   const scrollInterval = useRef(null);
+  const fetchTimeoutRef = useRef(null);
 
   // Função robusta para Upload no Storage
   const uploadToStorage = async (file) => {
@@ -694,16 +699,25 @@ export default function App() {
   useEffect(() => {
     if (!supabase || !currentProject) return;
     
-    // Busca simples e direta agora!
+    // Busca inicial
     fetchFrames(true);
 
     const channel = supabase.channel(`sbframes_${currentProject.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, (payload) => {
-            fetchFrames(false);
+            // DEBOUNCE: Aguarda 500ms antes de buscar, cancelando buscas anteriores se novos eventos chegarem
+            if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+            fetchTimeoutRef.current = setTimeout(() => {
+                fetchFrames(false);
+            }, 1000); // 1 segundo de tolerância
         })
-        .subscribe();
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') setIsConnected(true);
+        });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+        supabase.removeChannel(channel); 
+        if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+    };
   }, [currentProject, supabase]);
 
   const fetchFrames = async (showLoading = true) => {
@@ -719,7 +733,6 @@ export default function App() {
         .order('created_at', { ascending: true });
       
       if (error) {
-        // Fallback se não tiver order_index ainda
         if (error.code === 'PGRST301' || error.message.includes('order_index')) {
              const { data: fallbackData, error: fallbackError } = await supabase
                 .from('sbframes')
@@ -728,6 +741,8 @@ export default function App() {
                 .order('created_at', { ascending: true });
              if (fallbackError) throw fallbackError;
              setFrames(fallbackData || []);
+             setErrorMsg(null);
+             setIsConnected(true);
              return;
         }
         throw error;
@@ -744,20 +759,8 @@ export default function App() {
     }
   };
 
-  const handleDragOverFile = (e) => { 
-    e.preventDefault();
-    if (e.dataTransfer.types.includes('Files')) {
-        setIsDraggingFile(true);
-    }
-  };
-
-  const handleDragLeaveFile = (e) => { 
-    e.preventDefault();
-    // Apenas desativa se o mouse saiu da janela inteira ou do container principal
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-        setIsDraggingFile(false);
-    }
-  };
+  const handleDragOverFile = (e) => { e.preventDefault(); if (e.dataTransfer.types.includes('Files')) setIsDraggingFile(true); };
+  const handleDragLeaveFile = (e) => { e.preventDefault(); setIsDraggingFile(false); };
   
   const handleDropFile = async (e) => {
     e.preventDefault();
@@ -768,7 +771,6 @@ export default function App() {
     await uploadFilesBatch(files);
   };
 
-  // Drop no Overlay (Para garantir captura)
   const handleOverlayDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -792,18 +794,16 @@ export default function App() {
         const file = files[i];
 
         try {
-            // UPLOAD PARA STORAGE (NOVO)
             const publicUrl = await uploadToStorage(file);
-            
             const fileName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
 
             const frameData = {
-                title: '', // Título vazio como solicitado
+                title: '',
                 description: '',
                 prompt: '',
                 camera_move: '',
-                image_url: publicUrl, // Salva URL
-                image_base64: null,   // Limpa base64 antigo
+                image_url: publicUrl,
+                image_base64: null,
                 project_id: currentProject.id,
                 order_index: currentOrderIndex + i,
                 updated_at: new Date()
@@ -826,18 +826,19 @@ export default function App() {
 
     setUploadProgress(null);
     if (successCount > 0) {
-        fetchFrames(false);
+        // Debounce aqui também, caso o usuário solte muitos arquivos
+        if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+        fetchTimeoutRef.current = setTimeout(() => fetchFrames(false), 500);
     }
     if (failCount > 0) {
-        alert(`${failCount} imagens falharam. Verifique se o Bucket 'sbbrick' existe e é público.`);
+        alert(`${failCount} imagens falharam. Verifique se o Bucket 'sbbrick' existe.`);
     }
   };
-  
-  // --- AUTO-SCROLL LOGIC ---
+
   const handleAutoScroll = (e) => {
     const { clientY } = e;
     const height = window.innerHeight;
-    const threshold = 150; // pixels from edge
+    const threshold = 150; 
     const maxScrollSpeed = 20;
 
     if (scrollInterval.current) {
@@ -846,14 +847,12 @@ export default function App() {
     }
 
     if (clientY < threshold) {
-       // Scroll Up
        const intensity = (threshold - clientY) / threshold;
        const speed = -maxScrollSpeed * intensity;
        scrollInterval.current = setInterval(() => {
          window.scrollBy(0, speed);
        }, 16);
     } else if (clientY > (height - threshold)) {
-       // Scroll Down
        const intensity = (clientY - (height - threshold)) / threshold;
        const speed = maxScrollSpeed * intensity;
        scrollInterval.current = setInterval(() => {
@@ -873,18 +872,15 @@ export default function App() {
   
   const handleDragEnter = (e, position) => {
     e.preventDefault();
-    // Guard Clause: Se não estiver arrastando um card (ex: arrastando arquivo externo), ignora
     if (dragItem.current === null || dragItem.current === undefined) return;
     
     dragOverItem.current = position;
     
-    // Safety check: Garante que os índices estão dentro dos limites
     if (position < 0 || position >= frames.length || dragItem.current < 0 || dragItem.current >= frames.length) return;
 
     const copyListItems = [...frames];
     const dragItemContent = copyListItems[dragItem.current];
     
-    // Safety check: Se o item não for encontrado, aborta
     if (!dragItemContent) return;
 
     copyListItems.splice(dragItem.current, 1);
@@ -903,8 +899,9 @@ export default function App() {
     dragItem.current = null; 
     dragOverItem.current = null; 
     if (!supabase) return; 
+    
+    // Atualização otimista: UI já está certa, enviamos para o banco em silêncio
     const updates = frames.map((frame, index) => {
-        // Safety Check
         if (!frame) return null;
         return { 
             id: frame.id, 
@@ -912,7 +909,7 @@ export default function App() {
             project_id: currentProject.id, 
             updated_at: new Date() 
         }
-    }).filter(Boolean); // Remove nulos
+    }).filter(Boolean);
     
     try { 
         const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' }); 
@@ -931,11 +928,9 @@ export default function App() {
       let imageUrl = formData.imagePreview;
       let imageBase64 = null;
 
-      // Se for nova imagem, sobe pro Storage
       if (formData.image) {
          imageUrl = await uploadToStorage(formData.image);
       } else if (formData.imagePreview && formData.imagePreview.startsWith('data:')) {
-         // Caso legado ou preview local mantido
          imageBase64 = formData.imagePreview; 
       }
 
@@ -947,7 +942,7 @@ export default function App() {
         prompt: formData.prompt || '',
         camera_move: formData.cameraMove || '', 
         image_url: imageUrl,
-        image_base64: imageBase64, // Mantém compatibilidade
+        image_base64: imageBase64, 
         project_id: currentProject.id, 
         order_index: editingFrame ? editingFrame.order_index : newOrderIndex,
         updated_at: new Date()
@@ -963,7 +958,11 @@ export default function App() {
 
       setIsEditorOpen(false);
       setEditingFrame(null);
-      fetchFrames(); 
+      
+      // Debounce fetch após salvar
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      fetchTimeoutRef.current = setTimeout(() => fetchFrames(false), 500);
+
     } catch (error) {
       console.error("Erro ao salvar:", error);
       alert("Erro ao salvar: " + error.message);
