@@ -26,7 +26,8 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
-  UploadCloud
+  UploadCloud,
+  Zap
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -735,8 +736,21 @@ export default function App() {
     }
   };
 
-  const handleDragOverFile = (e) => { e.preventDefault(); if (e.dataTransfer.types.includes('Files')) setIsDraggingFile(true); };
-  const handleDragLeaveFile = (e) => { e.preventDefault(); setIsDraggingFile(false); };
+  // --- DRAG AND DROP EXTERNO (FILES) ---
+  const handleDragOverFile = (e) => { 
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) {
+        setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeaveFile = (e) => { 
+    e.preventDefault();
+    // Apenas desativa se o mouse saiu da janela inteira ou do container principal
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+        setIsDraggingFile(false);
+    }
+  };
   
   const handleDropFile = async (e) => {
     e.preventDefault();
@@ -746,6 +760,18 @@ export default function App() {
     if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
     await uploadFilesBatch(files);
   };
+
+  // Drop no Overlay (Para garantir captura)
+  const handleOverlayDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+    
+    if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+    const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+    if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
+    await uploadFilesBatch(files);
+  }
 
   const uploadFilesBatch = async (files) => {
     if (!supabase || !currentProject) return;
@@ -879,8 +905,27 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" onDragOver={handleDragOverFile} onDragLeave={handleDragLeaveFile} onDrop={handleDropFile}>
-      {isDraggingFile && (<div className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center pointer-events-none"><UploadCloud size={80} className="text-red-600 mb-4 animate-bounce" /><h2 className="text-3xl font-bold text-white uppercase tracking-widest">Soltar Frames Aqui</h2><p className="text-zinc-500 mt-2">Upload direto para o Storage</p></div>)}
+    <div 
+        className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" 
+        onDragOver={handleDragOverFile} 
+        onDragLeave={handleDragLeaveFile}
+        onDrop={handleDropFile}
+    >
+      
+      {/* DROP ZONE OVERLAY - Agora lida com o drop diretamente */}
+      {isDraggingFile && (
+          <div 
+            className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center"
+            onDragOver={(e) => e.preventDefault()}
+            onDragLeave={() => setIsDraggingFile(false)}
+            onDrop={handleOverlayDrop}
+          >
+              <UploadCloud size={80} className="text-red-600 mb-4 animate-bounce pointer-events-none" />
+              <h2 className="text-3xl font-bold text-white uppercase tracking-widest pointer-events-none">Soltar Frames Aqui</h2>
+              <p className="text-zinc-500 mt-2 pointer-events-none">Upload direto para o Storage</p>
+          </div>
+      )}
+
       {uploadProgress && (<div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up"><Loader2 className="animate-spin text-red-600" size={24} /><div><p className="text-xs font-bold text-white uppercase tracking-widest">Enviando...</p><p className="text-xs text-zinc-500">{uploadProgress.current}/{uploadProgress.total} arquivos</p></div></div>)}
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
