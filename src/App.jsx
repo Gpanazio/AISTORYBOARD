@@ -28,8 +28,7 @@ import {
   RefreshCw,
   UploadCloud,
   Zap,
-  ArrowRight,
-  Wand2 // Ícone para Otimizar
+  ArrowRight
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -38,6 +37,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // --- UTILITÁRIOS ---
 
+// Gera um arquivo Base64 do original (apenas para preview local rápido ou upload de capa)
 const convertFileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -47,41 +47,36 @@ const convertFileToBase64 = (file) => {
   });
 };
 
-// Gera miniatura a partir de um File OU de uma URL/Base64 já existente
-const generateThumbnailFromSrc = (source) => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "Anonymous"; // Permite manipular imagens do Storage
-    img.src = source;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const maxWidth = 350;
-      let width = img.width;
-      let height = img.height;
-
-      if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.6)); // Compressão mais agressiva para thumbs
-    };
-    img.onerror = (err) => reject(err);
-  });
-};
-
+// NOVA FUNÇÃO: Gera uma miniatura leve (max 300px) para o Grid
 const generateThumbnail = (file) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-         generateThumbnailFromSrc(e.target.result).then(resolve);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxWidth = 350; // Tamanho ideal para o card do grid
+        let width = img.width;
+        let height = img.height;
+
+        // Calcula proporção
+        if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        // Desenha redimensionado
+        ctx.drawImage(img, 0, 0, width, height);
+        // Retorna JPEG otimizado (qualidade 0.7)
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
       };
-      reader.readAsDataURL(file);
-    });
+    };
+    reader.readAsDataURL(file);
+  });
 };
 
 
@@ -122,7 +117,7 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
   if (!currentFrame) return null;
 
-  // No Carrossel, prioriza a URL (Storage) para qualidade máxima
+  // No Carrossel (Tela Cheia), usamos a URL original (Alta Resolução)
   const imageSource = currentFrame.image_url || currentFrame.image_base64;
 
   return (
@@ -215,6 +210,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
     let coverBase64 = editingProject?.cover_image;
 
     if (coverImage) {
+      // Para capa de projeto, usamos uma compressão média pois não precisa ser 4K
       coverBase64 = await generateThumbnail(coverImage); 
     }
 
@@ -401,7 +397,6 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
 
   useEffect(() => {
     if (initialData) {
-      // No editor, sempre preferimos a URL de alta resolução para ver os detalhes
       const highRes = initialData.image_url || initialData.image_base64;
       setFormData({
         title: initialData.title || '',
@@ -586,9 +581,9 @@ const FrameCard = memo(({
           </div>
         )}
         
-        {/* BADGE NUMÉRICO EDITÁVEL */}
+        {/* BADGE NUMÉRICO EDITÁVEL - Z-INDEX 30 PARA FICAR NO TOPO */}
         <div 
-            className="absolute top-0 left-0 bg-red-600 text-white z-20 shadow-lg flex items-center cursor-text hover:bg-red-700 transition-colors group/badge"
+            className="absolute top-0 left-0 bg-red-600 text-white z-30 shadow-lg flex items-center cursor-text hover:bg-red-700 transition-colors group/badge"
              onClick={(e) => e.stopPropagation()} 
              title="Clique para mudar a ordem"
         >
@@ -662,7 +657,6 @@ export default function App() {
   
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
-  const [isOptimizing, setIsOptimizing] = useState(false);
   
   const [insertAtIndex, setInsertAtIndex] = useState(null);
 
@@ -686,54 +680,6 @@ export default function App() {
           console.error("Erro no upload:", error);
           throw error;
       }
-  };
-
-  const handleOptimizeThumbnails = async () => {
-    if (!supabase || !currentProject) return;
-    if (!window.confirm("Essa ação vai gerar miniaturas leves para frames antigos que estão lentos. Pode demorar. Continuar?")) return;
-
-    setIsOptimizing(true);
-    let count = 0;
-    try {
-        const framesToFix = frames.filter(f => 
-            // Critério 1: Tem base64 e ele é GIGANTE (> 100kb, assumindo que thumb deve ser leve)
-            (f.image_base64 && f.image_base64.length > 150000) ||
-            // Critério 2: Tem URL mas NÃO tem base64 (só tem a original pesada)
-            (f.image_url && !f.image_base64)
-        );
-
-        if (framesToFix.length === 0) {
-            alert("Todos os frames parecem já estar otimizados!");
-            setIsOptimizing(false);
-            return;
-        }
-
-        for (const frame of framesToFix) {
-            try {
-                // Fonte: URL (se tiver) ou o próprio base64 pesado
-                const source = frame.image_url || frame.image_base64;
-                if (!source) continue;
-
-                const thumb = await generateThumbnailFromSrc(source);
-                
-                await supabase
-                    .from('sbframes')
-                    .update({ image_base64: thumb }) // Atualiza apenas o thumb leve
-                    .eq('id', frame.id);
-                
-                count++;
-            } catch (e) {
-                console.error("Erro ao otimizar frame:", frame.id, e);
-            }
-        }
-        alert(`${count} miniaturas geradas com sucesso! A página deve ficar mais rápida.`);
-        fetchFrames(true);
-
-    } catch (err) {
-        alert("Erro na otimização: " + err.message);
-    } finally {
-        setIsOptimizing(false);
-    }
   };
 
   const fetchWithRetry = async (fn, retries = 5, delay = 1000) => {
@@ -1198,16 +1144,7 @@ export default function App() {
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
         <div className="flex items-center gap-4">
-           {/* Botão de Otimização */}
-           <button 
-             onClick={handleOptimizeThumbnails}
-             className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white p-3 rounded transition border border-zinc-800"
-             title="Otimizar Miniaturas (Deixar Rápido)"
-             disabled={isOptimizing}
-           >
-             {isOptimizing ? <Loader2 size={18} className="animate-spin" /> : <Wand2 size={18} />}
-           </button>
-
+           
            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div>
            <button onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }} className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"><Play size={14} /> Apresentar</button><div className="hidden md:flex bg-zinc-950 border border-zinc-800"><button onClick={() => setViewMode('grid')} className={`p-3 ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Maximize2 size={18} /></button><button onClick={() => setViewMode('list')} className={`p-3 ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Move size={18} /></button></div><button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button></div>
       </header>
