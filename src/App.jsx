@@ -23,7 +23,7 @@ import {
   UploadCloud,
   Zap,
   ArrowRight,
-  Layers // Ícone para indicar Stack
+  Layers
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -110,6 +110,7 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
   if (!currentFrame) return null;
 
+  // Alta resolução sempre
   const imageSource = currentFrame.image_url || currentFrame.image_base64;
 
   return (
@@ -145,7 +146,9 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
       <div className="bg-black p-8 pb-10 border-t border-zinc-900">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title || "SEM TÍTULO"}</h2>
+          {currentFrame.title && (
+            <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">{currentFrame.title}</h2>
+          )}
           {currentFrame.camera_move && (
             <span className="inline-block bg-red-600 text-white text-[10px] font-bold px-2 py-1 mb-4 uppercase tracking-widest">
               {currentFrame.camera_move}
@@ -671,13 +674,7 @@ const FrameCard = memo(({
         {!isListMode && (
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
                 <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-3 border border-white text-white hover:bg-white hover:text-black transition rounded-full" title="Editar"><Edit3 size={18} /></button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} 
-                  className="p-3 border border-zinc-500 text-zinc-500 hover:border-red-500 hover:text-red-500 transition rounded-full" 
-                  title={hasVariations ? "Excluir Variação Atual" : "Excluir Frame"}
-                >
-                  <Trash2 size={18} />
-                </button>
+                <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-red-500 hover:text-red-500 transition rounded-full" title="Excluir"><Trash2 size={18} /></button>
             </div>
         )}
       </div>
