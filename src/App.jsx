@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -27,7 +27,8 @@ import {
   WifiOff,
   RefreshCw,
   UploadCloud,
-  Zap
+  Zap,
+  ArrowRight
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
@@ -36,6 +37,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // --- UTILITÁRIOS ---
 
+// Gera um arquivo Base64 do original (apenas para preview local rápido ou upload de capa)
 const convertFileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -44,6 +46,39 @@ const convertFileToBase64 = (file) => {
     reader.onerror = (error) => reject(error);
   });
 };
+
+// NOVA FUNÇÃO: Gera uma miniatura leve (max 300px) para o Grid
+const generateThumbnail = (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxWidth = 350; // Tamanho ideal para o card do grid
+        let width = img.width;
+        let height = img.height;
+
+        // Calcula proporção
+        if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        // Desenha redimensionado
+        ctx.drawImage(img, 0, 0, width, height);
+        // Retorna JPEG otimizado (qualidade 0.7)
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 
 const copyToClipboard = (text) => {
   if (!text) return; 
@@ -82,7 +117,7 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
   if (!currentFrame) return null;
 
-  // Prioriza URL do Storage, fallback para Base64 antigo
+  // No Carrossel (Tela Cheia), usamos a URL original (Alta Resolução)
   const imageSource = currentFrame.image_url || currentFrame.image_base64;
 
   return (
@@ -175,7 +210,8 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
     let coverBase64 = editingProject?.cover_image;
 
     if (coverImage) {
-      coverBase64 = await convertFileToBase64(coverImage);
+      // Para capa de projeto, usamos uma compressão média pois não precisa ser 4K
+      coverBase64 = await generateThumbnail(coverImage); 
     }
 
     const projectData = { 
@@ -361,12 +397,14 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
 
   useEffect(() => {
     if (initialData) {
+      // No editor, sempre preferimos a URL de alta resolução para ver os detalhes
+      const highRes = initialData.image_url || initialData.image_base64;
       setFormData({
         title: initialData.title || '',
         description: initialData.description || '',
         prompt: initialData.prompt || '',
         cameraMove: initialData.camera_move || '',
-        imagePreview: initialData.image_url || initialData.image_base64 || null,
+        imagePreview: highRes, 
         image: null
       });
     } else {
@@ -460,9 +498,18 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
   );
 };
 
-// Usando React.memo para evitar re-renderizações desnecessárias
-const FrameCard = memo(({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd, onSetCover, onDragOver }) => {
+// --- COMPONENTE CARD OTIMIZADO ---
+const FrameCard = memo(({ 
+    data, onDelete, onEdit, index, 
+    onDragStart, onDragEnter, onDragEnd, onDragOver, onSetCover,
+    onInsert, onManualOrderChange // Props mantidas para reordenação
+}) => {
   const [copied, setCopied] = useState(false);
+  const [tempOrder, setTempOrder] = useState(index + 1);
+
+  useEffect(() => {
+    setTempOrder(index + 1);
+  }, [index]);
   
   const handleCopyPrompt = () => {
     if (!data.prompt) return;
@@ -471,21 +518,57 @@ const FrameCard = memo(({ data, onDelete, onEdit, index, onDragStart, onDragEnte
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleOrderSubmit = (e) => {
+    if (e.key === 'Enter') {
+        const newPos = parseInt(tempOrder);
+        if (!isNaN(newPos) && newPos > 0) {
+            onManualOrderChange(index, newPos - 1);
+        } else {
+            setTempOrder(index + 1);
+        }
+        e.target.blur();
+    }
+  };
+
+  const handleOrderBlur = () => {
+    const newPos = parseInt(tempOrder);
+    if (!isNaN(newPos) && newPos > 0) {
+        onManualOrderChange(index, newPos - 1);
+    } else {
+        setTempOrder(index + 1);
+    }
+  };
+
   const downloadName = `brickboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
   
-  // Suporte duplo: URL (novo) ou Base64 (velho)
-  const imageSource = data.image_url || data.image_base64;
+  // AQUI A MÁGICA: Prioriza a thumbnail (base64) para o card, se existir. 
+  // Se não, usa a URL completa (fallback). Isso deixa o grid leve.
+  const imageSource = data.image_base64 || data.image_url;
+  // Link de download sempre aponta para a URL original (alta qualidade)
+  const originalSource = data.image_url || data.image_base64;
 
   return (
     <div 
-      className="group relative bg-zinc-950 border border-zinc-900 hover:border-red-600 transition-all duration-300 flex flex-col h-full cursor-grab active:cursor-grabbing"
-      draggable
-      onDragStart={(e) => onDragStart(e, index)}
-      onDragEnter={(e) => onDragEnter(e, index)}
-      onDragEnd={onDragEnd}
-      onDragOver={(e) => { e.preventDefault(); if(onDragOver) onDragOver(e); }}
+      className="group relative bg-zinc-950 border border-zinc-900 hover:border-red-600 transition-all duration-300 flex flex-col h-full"
     >
-      <div className="relative aspect-video bg-black overflow-hidden" onClick={() => onEdit(data)}>
+        {/* ZONA DE INSERÇÃO ("GUTTER") ESQUERDA */}
+        <div className="absolute -left-5 top-0 bottom-0 w-6 z-30 opacity-0 hover:opacity-100 flex items-center justify-center cursor-pointer group/insert"
+             onClick={() => onInsert(index)}>
+            <div className="h-full w-0.5 bg-red-600 shadow-[0_0_10px_#ef4444] group-hover/insert:h-full transition-all"></div>
+            <div className="absolute bg-red-600 text-white rounded-full p-1 shadow-lg transform scale-0 group-hover/insert:scale-100 transition-transform">
+                <Plus size={12} />
+            </div>
+        </div>
+
+      <div 
+        className="relative aspect-video bg-black overflow-hidden cursor-grab active:cursor-grabbing"
+        onClick={() => onEdit(data)}
+        draggable
+        onDragStart={(e) => onDragStart(e, index)}
+        onDragEnter={(e) => onDragEnter(e, index)}
+        onDragEnd={onDragEnd}
+        onDragOver={(e) => { e.preventDefault(); if(onDragOver) onDragOver(e); }}
+      >
         {imageSource ? (
           <img 
             src={imageSource} 
@@ -500,11 +583,22 @@ const FrameCard = memo(({ data, onDelete, onEdit, index, onDragStart, onDragEnte
           </div>
         )}
         
-        <div className="absolute top-0 left-0 bg-red-600 text-white text-[10px] font-bold px-3 py-1 z-10 shadow-lg">
-          #{String(index + 1).padStart(2, '0')}
+        {/* BADGE NUMÉRICO EDITÁVEL */}
+        <div className="absolute top-0 left-0 bg-red-600 text-white z-20 shadow-lg flex items-center"
+             onClick={(e) => e.stopPropagation()} 
+        >
+          <span className="pl-2 pr-1 text-[10px] font-bold">#</span>
+          <input 
+            type="text"
+            value={tempOrder}
+            onChange={(e) => setTempOrder(e.target.value)}
+            onKeyDown={handleOrderSubmit}
+            onBlur={handleOrderBlur}
+            className="w-8 bg-transparent text-white text-[10px] font-bold focus:outline-none focus:bg-red-700 text-center py-1 pr-1"
+          />
         </div>
         
-        <div className="absolute top-2 right-2 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 drop-shadow-md">
+        <div className="absolute top-2 right-2 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10 drop-shadow-md pointer-events-none">
             <GripVertical size={20} />
         </div>
 
@@ -528,7 +622,7 @@ const FrameCard = memo(({ data, onDelete, onEdit, index, onDragStart, onDragEnte
         <div className="mt-auto pt-4 border-t border-zinc-900">
              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                   {imageSource && <a href={imageSource} download={downloadName} className="text-zinc-600 hover:text-red-500 transition flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold" title="Baixar Original" onClick={(e) => e.stopPropagation()}><Download size={12} /> <span className="hidden sm:inline">Download</span></a>}
+                   {originalSource && <a href={originalSource} download={downloadName} className="text-zinc-600 hover:text-red-500 transition flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold" title="Baixar Original" onClick={(e) => e.stopPropagation()}><Download size={12} /> <span className="hidden sm:inline">Download</span></a>}
                 </div>
 
                 {data.prompt && (
@@ -563,30 +657,24 @@ export default function App() {
   
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  
+  const [insertAtIndex, setInsertAtIndex] = useState(null);
 
   const dragItem = useRef();
   const dragOverItem = useRef();
   const scrollInterval = useRef(null);
   const fetchTimeoutRef = useRef(null);
+  const saveOrderTimeoutRef = useRef(null);
 
-  // Função robusta para Upload no Storage
   const uploadToStorage = async (file) => {
       if(!supabase) return null;
       try {
           const fileExt = file.name ? file.name.split('.').pop() : 'png';
           const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
           const filePath = `${fileName}`;
-
-          const { error: uploadError } = await supabase.storage
-              .from('sbbrick') 
-              .upload(filePath, file);
-
+          const { error: uploadError } = await supabase.storage.from('sbbrick').upload(filePath, file);
           if (uploadError) throw uploadError;
-
-          const { data } = supabase.storage
-              .from('sbbrick')
-              .getPublicUrl(filePath);
-
+          const { data } = supabase.storage.from('sbbrick').getPublicUrl(filePath);
           return data.publicUrl;
       } catch (error) {
           console.error("Erro no upload:", error);
@@ -625,8 +713,7 @@ export default function App() {
     if (!supabase) return;
     fetchWithRetry(fetchProjects);
     const channel = supabase.channel('sbprojects_channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, (payload) => {
-            console.log('Realtime update:', payload);
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sbprojects' }, () => {
             fetchProjects(false);
         })
         .subscribe((status) => { if (status === 'SUBSCRIBED') setIsConnected(true); else setIsConnected(false); });
@@ -674,7 +761,9 @@ export default function App() {
     if (!supabase || !currentProject) return;
     if (window.confirm("Definir este frame como capa do projeto?")) {
         try {
-            const { error } = await supabase.from('sbprojects').update({ cover_image: frame.image_url || frame.image_base64 }).eq('id', currentProject.id);
+            // Usa thumbnail para capa (mais leve) ou a original se não tiver thumb
+            const cover = frame.image_base64 || frame.image_url;
+            const { error } = await supabase.from('sbprojects').update({ cover_image: cover }).eq('id', currentProject.id);
             if (error) throw error;
             alert("Capa atualizada com sucesso!");
         } catch (error) {
@@ -699,16 +788,17 @@ export default function App() {
   useEffect(() => {
     if (!supabase || !currentProject) return;
     
-    // Busca inicial
     fetchFrames(true);
 
     const channel = supabase.channel(`sbframes_${currentProject.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, (payload) => {
-            // DEBOUNCE: Aguarda 500ms antes de buscar, cancelando buscas anteriores se novos eventos chegarem
+            // Se eu mesmo estou arrastando ou salvando, ignoro updates externos temporariamente
             if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
             fetchTimeoutRef.current = setTimeout(() => {
-                fetchFrames(false);
-            }, 1000); // 1 segundo de tolerância
+                if (!isSaving && dragItem.current === null) {
+                   fetchFrames(false);
+                }
+            }, 1000); 
         })
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') setIsConnected(true);
@@ -760,7 +850,7 @@ export default function App() {
   };
 
   const handleDragOverFile = (e) => { e.preventDefault(); if (e.dataTransfer.types.includes('Files')) setIsDraggingFile(true); };
-  const handleDragLeaveFile = (e) => { e.preventDefault(); setIsDraggingFile(false); };
+  const handleDragLeaveFile = (e) => { e.preventDefault(); if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingFile(false); };
   
   const handleDropFile = async (e) => {
     e.preventDefault();
@@ -775,7 +865,6 @@ export default function App() {
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingFile(false);
-    
     if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
     const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
     if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
@@ -787,7 +876,12 @@ export default function App() {
     
     let successCount = 0;
     let failCount = 0;
-    let currentOrderIndex = frames.length;
+    let currentOrderIndex = frames.length; 
+
+    // Se estiver inserindo no meio, usamos esse index
+    if (insertAtIndex !== null) {
+        currentOrderIndex = insertAtIndex;
+    }
 
     for (let i = 0; i < files.length; i++) {
         setUploadProgress({ current: i + 1, total: files.length });
@@ -795,6 +889,8 @@ export default function App() {
 
         try {
             const publicUrl = await uploadToStorage(file);
+            const thumbBase64 = await generateThumbnail(file); // Gera Thumb
+
             const fileName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
 
             const frameData = {
@@ -802,10 +898,10 @@ export default function App() {
                 description: '',
                 prompt: '',
                 camera_move: '',
-                image_url: publicUrl,
-                image_base64: null,
+                image_url: publicUrl, // Original
+                image_base64: thumbBase64, // Thumbnail
                 project_id: currentProject.id,
-                order_index: currentOrderIndex + i,
+                order_index: currentOrderIndex + i, // Insere em ordem
                 updated_at: new Date()
             };
 
@@ -825,10 +921,12 @@ export default function App() {
     }
 
     setUploadProgress(null);
+    setInsertAtIndex(null); 
+    
     if (successCount > 0) {
-        // Debounce aqui também, caso o usuário solte muitos arquivos
+        // Se inseriu no meio, melhor recarregar para garantir ordem
         if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
-        fetchTimeoutRef.current = setTimeout(() => fetchFrames(false), 500);
+        fetchTimeoutRef.current = setTimeout(() => fetchFrames(true), 500);
     }
     if (failCount > 0) {
         alert(`${failCount} imagens falharam. Verifique se o Bucket 'sbbrick' existe.`);
@@ -868,6 +966,41 @@ export default function App() {
     }
   };
 
+  // --- NOVA LÓGICA DE REORDENAÇÃO MANUAL E POR DRAG ---
+  const saveNewOrder = useCallback(async (newFrames) => {
+     if (!supabase) return;
+     
+     // Debounce para não matar o banco com updates a cada pixel
+     if (saveOrderTimeoutRef.current) clearTimeout(saveOrderTimeoutRef.current);
+
+     saveOrderTimeoutRef.current = setTimeout(async () => {
+        const updates = newFrames.map((frame, index) => ({
+            id: frame.id,
+            order_index: index,
+            project_id: currentProject.id, 
+            updated_at: new Date()
+        }));
+
+        try {
+            const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' });
+            if (error) throw error;
+            console.log("Ordem salva com sucesso.");
+        } catch (error) {
+            console.error("Erro ao salvar ordem:", error);
+        }
+     }, 2000); 
+  }, [currentProject, supabase]);
+
+
+  const handleManualOrderChange = (currentIndex, newIndex) => {
+      const updatedFrames = [...frames];
+      const [movedFrame] = updatedFrames.splice(currentIndex, 1);
+      const targetIndex = Math.max(0, Math.min(newIndex, updatedFrames.length));
+      updatedFrames.splice(targetIndex, 0, movedFrame);
+      setFrames(updatedFrames);
+      saveNewOrder(updatedFrames);
+  };
+
   const handleDragStart = (e, position) => { dragItem.current = position; };
   
   const handleDragEnter = (e, position) => {
@@ -885,6 +1018,7 @@ export default function App() {
 
     copyListItems.splice(dragItem.current, 1);
     copyListItems.splice(dragOverItem.current, 0, dragItemContent);
+    
     dragItem.current = position;
     setFrames(copyListItems);
   };
@@ -898,27 +1032,15 @@ export default function App() {
     stopAutoScroll();
     dragItem.current = null; 
     dragOverItem.current = null; 
-    if (!supabase) return; 
-    
-    // Atualização otimista: UI já está certa, enviamos para o banco em silêncio
-    const updates = frames.map((frame, index) => {
-        if (!frame) return null;
-        return { 
-            id: frame.id, 
-            order_index: index, 
-            project_id: currentProject.id, 
-            updated_at: new Date() 
-        }
-    }).filter(Boolean);
-    
-    try { 
-        const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' }); 
-        if (error) throw error; 
-    } catch (error) { 
-        console.error("Erro ao salvar ordem:", error); 
-    } 
+    saveNewOrder(frames);
   };
   
+  const handleInsertAt = (index) => {
+      setInsertAtIndex(index);
+      setEditingFrame(null);
+      setIsEditorOpen(true);
+  };
+
   const handleSaveFrame = async (formData) => {
     if (!supabase || !currentProject) return;
     if (!formData.image && !formData.imagePreview) { alert("A imagem é obrigatória."); return; }
@@ -928,13 +1050,22 @@ export default function App() {
       let imageUrl = formData.imagePreview;
       let imageBase64 = null;
 
+      // Se imagem nova
       if (formData.image) {
          imageUrl = await uploadToStorage(formData.image);
+         // Gera thumbnail
+         imageBase64 = await generateThumbnail(formData.image);
       } else if (formData.imagePreview && formData.imagePreview.startsWith('data:')) {
          imageBase64 = formData.imagePreview; 
       }
 
-      const newOrderIndex = frames.length;
+      // Lógica de Índice
+      let targetOrderIndex = frames.length; 
+      if (editingFrame) {
+          targetOrderIndex = editingFrame.order_index;
+      } else if (insertAtIndex !== null) {
+          targetOrderIndex = insertAtIndex;
+      }
 
       const frameData = {
         title: formData.title || '',
@@ -944,7 +1075,7 @@ export default function App() {
         image_url: imageUrl,
         image_base64: imageBase64, 
         project_id: currentProject.id, 
-        order_index: editingFrame ? editingFrame.order_index : newOrderIndex,
+        order_index: targetOrderIndex,
         updated_at: new Date()
       };
 
@@ -952,14 +1083,16 @@ export default function App() {
         const { error } = await supabase.from('sbframes').update(frameData).eq('id', editingFrame.id);
         if (error) throw error;
       } else {
+        // Para garantir que insira na posição certa, vamos fazer o insert e depois reordenar todo o array se necessario
+        // Mas a estratégia mais simples é: Inserir com o index desejado. Se for conflito, o reorder subsequente corrige
         const { error } = await supabase.from('sbframes').insert([frameData]);
         if (error) throw error;
       }
 
       setIsEditorOpen(false);
       setEditingFrame(null);
+      setInsertAtIndex(null);
       
-      // Debounce fetch após salvar
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
       fetchTimeoutRef.current = setTimeout(() => fetchFrames(false), 500);
 
@@ -973,7 +1106,6 @@ export default function App() {
 
   const handleDeleteFrame = async (id) => { if (!supabase) return; if (window.confirm("Excluir este frame?")) { const { error } = await supabase.from('sbframes').delete().eq('id', id); if (error) alert("Erro ao deletar: " + error.message); fetchFrames(); } };
 
-  // --- RENDERIZAÇÃO ---
   if (!isLibLoaded || (loading && !projects.length && !currentProject)) {
     return <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-zinc-500"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-xs uppercase tracking-widest text-red-600">Carregando BrickBoard...</p>{errorMsg && <p className="text-red-500 text-xs text-center px-4 max-w-md">{errorMsg}</p>}</div>;
   }
@@ -982,15 +1114,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative">
         <div className="absolute top-6 right-8 z-30 flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-red-500 shadow-[0_0_10px_#ef4444]'} transition-colors`}></div><span className="text-[10px] uppercase font-bold text-zinc-600 tracking-widest">{isConnected ? 'Online' : 'Offline'}</span></div>
-        <ProjectList 
-            projects={projects} 
-            onSelect={(project) => { setLoading(true); setCurrentProject(project); }} 
-            onCreate={handleCreateProject} 
-            onDelete={handleDeleteProject} 
-            onUpdate={handleUpdateProject} 
-            loading={loading} 
-            onRefresh={() => fetchProjects(true)}
-        />
+        <ProjectList projects={projects} onSelect={(project) => { setLoading(true); setCurrentProject(project); }} onCreate={handleCreateProject} onDelete={handleDeleteProject} onUpdate={handleUpdateProject} loading={loading} onRefresh={() => fetchProjects(true)} />
       </div>
     );
   }
@@ -1003,7 +1127,6 @@ export default function App() {
         onDrop={handleDropFile}
     >
       
-      {/* DROP ZONE OVERLAY - Agora lida com o drop diretamente */}
       {isDraggingFile && (
           <div 
             className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center"
@@ -1020,7 +1143,7 @@ export default function App() {
       {uploadProgress && (<div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up"><Loader2 className="animate-spin text-red-600" size={24} /><div><p className="text-xs font-bold text-white uppercase tracking-widest">Enviando...</p><p className="text-xs text-zinc-500">{uploadProgress.current}/{uploadProgress.total} arquivos</p></div></div>)}
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
-        <div className="flex items-center gap-4"><div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div><button onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }} className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"><Play size={14} /> Apresentar</button><div className="hidden md:flex bg-zinc-950 border border-zinc-800"><button onClick={() => setViewMode('grid')} className={`p-3 ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Maximize2 size={18} /></button><button onClick={() => setViewMode('list')} className={`p-3 ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Move size={18} /></button></div><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button></div>
+        <div className="flex items-center gap-4"><div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div><button onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }} className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"><Play size={14} /> Apresentar</button><div className="hidden md:flex bg-zinc-950 border border-zinc-800"><button onClick={() => setViewMode('grid')} className={`p-3 ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Maximize2 size={18} /></button><button onClick={() => setViewMode('list')} className={`p-3 ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Move size={18} /></button></div><button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button></div>
       </header>
       <main className="p-8 max-w-[1800px] mx-auto min-h-[calc(100vh-100px)]">
         {loading ? (<div className="flex flex-col items-center justify-center h-[60vh] gap-6"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p></div>) : frames.length === 0 ? (<div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950"><div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6"><Film size={40} className="text-zinc-700" strokeWidth={1} /></div><h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2><p className="text-zinc-600 text-sm mb-4 text-center max-w-md">Arraste seus frames para cá ou adicione manualmente.</p>{errorMsg && (<div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-xs font-mono max-w-md text-center">{errorMsg}</div>)}<div className="flex gap-4"><button onClick={() => fetchFrames(true)} className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"><RefreshCw size={16} /> Recarregar</button><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition">Adicionar Frame Inicial</button></div></div>) : (
@@ -1038,11 +1161,13 @@ export default function App() {
                         onDragStart={handleDragStart} 
                         onDragEnter={handleDragEnter} 
                         onDragEnd={handleDragEnd} 
-                        onDragOver={handleDragOver} // Passa o auto-scroll
+                        onDragOver={handleDragOver} 
+                        onInsert={handleInsertAt} // Passa a função de inserção
+                        onManualOrderChange={handleManualOrderChange} // Passa a função de troca manual
                     />
                 );
             })}
-            <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="group relative bg-zinc-950 border border-dashed border-zinc-800 hover:border-red-600/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[350px]"><div className="w-full h-full flex flex-col items-center justify-center"><div className="w-16 h-16 bg-zinc-900 group-hover:bg-red-600 flex items-center justify-center transition-colors mb-6 rounded-full group-hover:shadow-[0_0_15px_rgba(220,38,38,0.5)]"><Plus className="text-zinc-500 group-hover:text-white" size={32} /></div><span className="text-zinc-500 font-bold text-xs uppercase tracking-widest group-hover:text-red-500 transition-colors">Adicionar Frame</span></div></button>
+            <button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="group relative bg-zinc-950 border border-dashed border-zinc-800 hover:border-red-600/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[350px]"><div className="w-full h-full flex flex-col items-center justify-center"><div className="w-16 h-16 bg-zinc-900 group-hover:bg-red-600 flex items-center justify-center transition-colors mb-6 rounded-full group-hover:shadow-[0_0_15px_rgba(220,38,38,0.5)]"><Plus className="text-zinc-500 group-hover:text-white" size={32} /></div><span className="text-zinc-500 font-bold text-xs uppercase tracking-widest group-hover:text-red-500 transition-colors">Adicionar Frame</span></div></button>
           </div>
         )}
       </main>
