@@ -5,26 +5,20 @@ import {
   Edit3, 
   Save, 
   Image as ImageIcon, 
-  Move, 
   Film, 
   Copy, 
   X, 
   Loader2,
   Maximize2,
-  LogOut,
-  AlertTriangle,
   FolderPlus,
-  FolderOpen,
   ChevronLeft,
   ChevronRight,
   LayoutGrid,
+  List,
   Calendar,
   Download,
   Play,
   GripVertical,
-  LayoutTemplate,
-  Wifi,
-  WifiOff,
   RefreshCw,
   UploadCloud,
   Zap,
@@ -37,7 +31,6 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // --- UTILITÁRIOS ---
 
-// Gera um arquivo Base64 do original (apenas para preview local rápido ou upload de capa)
 const convertFileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -47,7 +40,6 @@ const convertFileToBase64 = (file) => {
   });
 };
 
-// NOVA FUNÇÃO: Gera uma miniatura leve (max 300px) para o Grid
 const generateThumbnail = (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -56,11 +48,10 @@ const generateThumbnail = (file) => {
       img.src = e.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const maxWidth = 350; // Tamanho ideal para o card do grid
+        const maxWidth = 350; 
         let width = img.width;
         let height = img.height;
 
-        // Calcula proporção
         if (width > maxWidth) {
             height = (height * maxWidth) / width;
             width = maxWidth;
@@ -69,9 +60,7 @@ const generateThumbnail = (file) => {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        // Desenha redimensionado
         ctx.drawImage(img, 0, 0, width, height);
-        // Retorna JPEG otimizado (qualidade 0.7)
         resolve(canvas.toDataURL('image/jpeg', 0.7));
       };
     };
@@ -79,6 +68,9 @@ const generateThumbnail = (file) => {
   });
 };
 
+const formatFileName = (name) => {
+    return name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+};
 
 const copyToClipboard = (text) => {
   if (!text) return; 
@@ -117,7 +109,7 @@ const CarouselModal = ({ frames, initialIndex, onClose }) => {
 
   if (!currentFrame) return null;
 
-  // No Carrossel (Tela Cheia), usamos a URL original (Alta Resolução)
+  // Alta resolução sempre
   const imageSource = currentFrame.image_url || currentFrame.image_base64;
 
   return (
@@ -210,8 +202,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
     let coverBase64 = editingProject?.cover_image;
 
     if (coverImage) {
-      // Para capa de projeto, usamos uma compressão média pois não precisa ser 4K
-      coverBase64 = await generateThumbnail(coverImage); 
+      coverBase64 = await convertFileToBase64(coverImage);
     }
 
     const projectData = { 
@@ -385,7 +376,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
   );
 };
 
-const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
+const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingTitles }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -414,6 +405,19 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      const fileName = formatFileName(file.name);
+      
+      // ALERTA DE DUPLICIDADE
+      if (existingTitles && existingTitles.has(fileName)) {
+          alert(`Atenção: Já existe um frame com o nome "${fileName}" neste projeto.`);
+      }
+
+      // Auto-preenche o título se estiver vazio
+      setFormData(prev => ({
+          ...prev, 
+          title: prev.title || fileName
+      }));
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, image: file, imagePreview: reader.result }));
@@ -500,8 +504,8 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
 // --- COMPONENTE CARD OTIMIZADO ---
 const FrameCard = memo(({ 
     data, onDelete, onEdit, index, 
-    onDragStart, onDragEnter, onDragEnd, onDragOver, onSetCover,
-    onInsert, onManualOrderChange // Props mantidas para reordenação
+    onDragStart, onDragEnter, onDragEnd, onDragOver,
+    onInsert, onManualOrderChange, viewMode
 }) => {
   const [copied, setCopied] = useState(false);
   const [tempOrder, setTempOrder] = useState(index + 1);
@@ -540,26 +544,29 @@ const FrameCard = memo(({
 
   const downloadName = `brickboard_${data.title ? data.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'frame'}_${index}.png`;
   
-  // AQUI A MÁGICA: Prioriza a thumbnail (base64) para o card, se existir. 
-  const imageSource = data.image_base64 || data.image_url;
-  // Link de download sempre aponta para a URL original (alta qualidade)
+  const isListMode = viewMode === 'list';
+  const imageSource = isListMode 
+      ? (data.image_url || data.image_base64) 
+      : (data.image_base64 || data.image_url);
+      
   const originalSource = data.image_url || data.image_base64;
 
   return (
     <div 
-      className="group relative bg-zinc-950 border border-zinc-900 hover:border-red-600 transition-all duration-300 flex flex-col h-full"
+      className={`group relative bg-zinc-950 border border-zinc-900 hover:border-red-600 transition-all duration-300 flex flex-col h-full ${isListMode ? 'w-full' : ''}`}
     >
-        {/* ZONA DE INSERÇÃO ("GUTTER") ESQUERDA */}
-        <div className="absolute -left-5 top-0 bottom-0 w-6 z-30 opacity-0 hover:opacity-100 flex items-center justify-center cursor-pointer group/insert"
-             onClick={() => onInsert(index)}>
-            <div className="h-full w-0.5 bg-red-600 shadow-[0_0_10px_#ef4444] group-hover/insert:h-full transition-all"></div>
-            <div className="absolute bg-red-600 text-white rounded-full p-1 shadow-lg transform scale-0 group-hover/insert:scale-100 transition-transform">
-                <Plus size={12} />
-            </div>
-        </div>
+        {!isListMode && (
+          <div className="absolute -left-5 top-0 bottom-0 w-6 z-30 opacity-0 hover:opacity-100 flex items-center justify-center cursor-pointer group/insert"
+               onClick={() => onInsert(index)}>
+              <div className="h-full w-0.5 bg-red-600 shadow-[0_0_10px_#ef4444] group-hover/insert:h-full transition-all"></div>
+              <div className="absolute bg-red-600 text-white rounded-full p-1 shadow-lg transform scale-0 group-hover/insert:scale-100 transition-transform">
+                  <Plus size={12} />
+              </div>
+          </div>
+        )}
 
       <div 
-        className="relative aspect-video bg-black overflow-hidden cursor-grab active:cursor-grabbing"
+        className={`relative bg-black overflow-hidden cursor-grab active:cursor-grabbing ${isListMode ? 'w-full h-auto' : 'aspect-video'}`}
         onClick={() => onEdit(data)}
         draggable
         onDragStart={(e) => onDragStart(e, index)}
@@ -571,17 +578,17 @@ const FrameCard = memo(({
           <img 
             src={imageSource} 
             alt={data.title} 
-            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500 select-none pointer-events-none" 
+            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-all duration-500 select-none pointer-events-none" 
             loading="lazy" 
             decoding="async"
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-zinc-800 gap-2">
+          <div className="w-full h-full flex flex-col items-center justify-center text-zinc-800 gap-2 p-10">
               <span className="text-[10px] uppercase font-bold text-zinc-700">Sem Imagem</span>
           </div>
         )}
         
-        {/* BADGE NUMÉRICO EDITÁVEL - Z-INDEX 30 PARA FICAR NO TOPO */}
+        {/* BADGE NUMÉRICO EDITÁVEL */}
         <div 
             className="absolute top-0 left-0 bg-red-600 text-white z-30 shadow-lg flex items-center cursor-text hover:bg-red-700 transition-colors group/badge"
              onClick={(e) => e.stopPropagation()} 
@@ -604,20 +611,19 @@ const FrameCard = memo(({
 
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 z-20 backdrop-blur-sm">
             <button onClick={(e) => { e.stopPropagation(); onEdit(data); }} className="p-3 border border-white text-white hover:bg-white hover:text-black transition rounded-full" title="Editar"><Edit3 size={18} /></button>
-            <button onClick={(e) => { e.stopPropagation(); onSetCover(data); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-white hover:text-white transition rounded-full" title="Definir como Capa"><LayoutTemplate size={18} /></button>
             <button onClick={(e) => { e.stopPropagation(); onDelete(data.id); }} className="p-3 border border-zinc-500 text-zinc-500 hover:border-red-500 hover:text-red-500 transition rounded-full" title="Excluir"><Trash2 size={18} /></button>
         </div>
       </div>
       
       <div className="p-5 flex flex-col flex-1">
         <div className="flex justify-between items-start mb-3 min-h-[24px]">
-            <h3 className={`font-bold truncate pr-2 uppercase tracking-tight ${data.title ? 'text-white' : 'text-zinc-700'}`}>
+            <h3 className={`font-bold truncate pr-2 uppercase tracking-tight ${data.title ? 'text-white' : 'text-zinc-700'} ${isListMode ? 'text-xl' : 'text-base'}`}>
               {data.title || "SEM TÍTULO"}
             </h3>
             {data.camera_move && <span className="text-[9px] font-bold uppercase tracking-widest bg-zinc-900 text-red-500 px-2 py-0.5 border border-zinc-800 whitespace-nowrap">{data.camera_move}</span>}
         </div>
         
-        <p className="text-zinc-500 text-xs line-clamp-2 mb-4 h-8 font-light">{data.description || ""}</p>
+        <p className={`text-zinc-500 text-xs line-clamp-2 mb-4 font-light ${isListMode ? 'text-sm' : ''}`}>{data.description || ""}</p>
         
         <div className="mt-auto pt-4 border-t border-zinc-900">
              <div className="flex items-center justify-between">
@@ -645,6 +651,7 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null); 
   const [frames, setFrames] = useState([]);
+  const [existingTitles, setExistingTitles] = useState(new Set());
   
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -665,6 +672,15 @@ export default function App() {
   const scrollInterval = useRef(null);
   const fetchTimeoutRef = useRef(null);
   const saveOrderTimeoutRef = useRef(null);
+
+  // Mapeia títulos para verificação rápida
+  useEffect(() => {
+    if (frames.length > 0) {
+        setExistingTitles(new Set(frames.map(f => f.title)));
+    } else {
+        setExistingTitles(new Set());
+    }
+  }, [frames]);
 
   const uploadToStorage = async (file) => {
       if(!supabase) return null;
@@ -757,21 +773,6 @@ export default function App() {
     }
   };
 
-  const handleSetCover = async (frame) => {
-    if (!supabase || !currentProject) return;
-    if (window.confirm("Definir este frame como capa do projeto?")) {
-        try {
-            // Usa thumbnail para capa (mais leve) ou a original se não tiver thumb
-            const cover = frame.image_base64 || frame.image_url;
-            const { error } = await supabase.from('sbprojects').update({ cover_image: cover }).eq('id', currentProject.id);
-            if (error) throw error;
-            alert("Capa atualizada com sucesso!");
-        } catch (error) {
-            alert("Erro ao definir capa: " + error.message);
-        }
-    }
-  };
-
   const handleDeleteProject = async (id) => {
     if (!supabase) return;
     if (!window.confirm("ATENÇÃO: Excluir o projeto apagará TODOS os frames dentro dele. Continuar?")) return;
@@ -792,7 +793,6 @@ export default function App() {
 
     const channel = supabase.channel(`sbframes_${currentProject.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sbframes', filter: `project_id=eq.${currentProject.id}` }, (payload) => {
-            // Se eu mesmo estou arrastando ou salvando, ignoro updates externos temporariamente
             if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
             fetchTimeoutRef.current = setTimeout(() => {
                 if (!isSaving && dragItem.current === null) {
@@ -874,11 +874,24 @@ export default function App() {
   const uploadFilesBatch = async (files) => {
     if (!supabase || !currentProject) return;
     
+    // Verificação de Duplicidade em Lote
+    const duplicates = [];
+    for (const file of files) {
+        const cleanName = formatFileName(file.name);
+        if (existingTitles.has(cleanName)) {
+            duplicates.push(cleanName);
+        }
+    }
+
+    if (duplicates.length > 0) {
+        const confirm = window.confirm(`Atenção: Os seguintes arquivos já existem neste projeto:\n\n${duplicates.join('\n')}\n\nDeseja continuar mesmo assim?`);
+        if (!confirm) return;
+    }
+
     let successCount = 0;
     let failCount = 0;
     let currentOrderIndex = frames.length; 
 
-    // Se estiver inserindo no meio, usamos esse index
     if (insertAtIndex !== null) {
         currentOrderIndex = insertAtIndex;
     }
@@ -889,19 +902,19 @@ export default function App() {
 
         try {
             const publicUrl = await uploadToStorage(file);
-            const thumbBase64 = await generateThumbnail(file); // Gera Thumb
+            const thumbBase64 = await generateThumbnail(file); 
 
-            const fileName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+            const fileName = formatFileName(file.name);
 
             const frameData = {
-                title: '',
+                title: fileName,
                 description: '',
                 prompt: '',
                 camera_move: '',
-                image_url: publicUrl, // Original
-                image_base64: thumbBase64, // Thumbnail
+                image_url: publicUrl, 
+                image_base64: thumbBase64, 
                 project_id: currentProject.id,
-                order_index: currentOrderIndex + i, // Insere em ordem
+                order_index: currentOrderIndex + i, 
                 updated_at: new Date()
             };
 
@@ -924,7 +937,6 @@ export default function App() {
     setInsertAtIndex(null); 
     
     if (successCount > 0) {
-        // Se inseriu no meio, melhor recarregar para garantir ordem
         if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
         fetchTimeoutRef.current = setTimeout(() => fetchFrames(true), 500);
     }
@@ -966,11 +978,8 @@ export default function App() {
     }
   };
 
-  // --- NOVA LÓGICA DE REORDENAÇÃO MANUAL E POR DRAG ---
   const saveNewOrder = useCallback(async (newFrames) => {
      if (!supabase) return;
-     
-     // Debounce para não matar o banco com updates a cada pixel
      if (saveOrderTimeoutRef.current) clearTimeout(saveOrderTimeoutRef.current);
 
      saveOrderTimeoutRef.current = setTimeout(async () => {
@@ -1050,16 +1059,13 @@ export default function App() {
       let imageUrl = formData.imagePreview;
       let imageBase64 = null;
 
-      // Se imagem nova
       if (formData.image) {
          imageUrl = await uploadToStorage(formData.image);
-         // Gera thumbnail
          imageBase64 = await generateThumbnail(formData.image);
       } else if (formData.imagePreview && formData.imagePreview.startsWith('data:')) {
          imageBase64 = formData.imagePreview; 
       }
 
-      // Lógica de Índice
       let targetOrderIndex = frames.length; 
       if (editingFrame) {
           targetOrderIndex = editingFrame.order_index;
@@ -1083,8 +1089,6 @@ export default function App() {
         const { error } = await supabase.from('sbframes').update(frameData).eq('id', editingFrame.id);
         if (error) throw error;
       } else {
-        // Para garantir que insira na posição certa, vamos fazer o insert e depois reordenar todo o array se necessario
-        // Mas a estratégia mais simples é: Inserir com o index desejado. Se for conflito, o reorder subsequente corrige
         const { error } = await supabase.from('sbframes').insert([frameData]);
         if (error) throw error;
       }
@@ -1146,13 +1150,36 @@ export default function App() {
         <div className="flex items-center gap-4">
            
            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'} mr-2`} title={isConnected ? "Conectado" : "Offline"}></div>
-           <button onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }} className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"><Play size={14} /> Apresentar</button><div className="hidden md:flex bg-zinc-950 border border-zinc-800"><button onClick={() => setViewMode('grid')} className={`p-3 ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Maximize2 size={18} /></button><button onClick={() => setViewMode('list')} className={`p-3 ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white'}`}><Move size={18} /></button></div><button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button></div>
+           <button onClick={() => { setCarouselStartIndex(0); setCarouselOpen(true); }} className="hidden md:flex bg-zinc-900 hover:bg-white hover:text-black text-zinc-400 px-6 py-3 font-bold items-center gap-2 transition text-xs uppercase tracking-widest border border-zinc-800 hover:border-white"><Play size={14} /> Apresentar</button>
+           
+           <div className="flex bg-zinc-950 border border-zinc-800 rounded-md overflow-hidden">
+                <button 
+                  onClick={() => setViewMode('grid')} 
+                  className={`p-3 transition-colors ${viewMode === 'grid' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white hover:bg-zinc-900'}`}
+                  title="Visualização em Grid"
+                >
+                  <LayoutGrid size={18} />
+                </button>
+                <button 
+                  onClick={() => setViewMode('list')} 
+                  className={`p-3 transition-colors ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-zinc-500 hover:text-white hover:bg-zinc-900'}`}
+                  title="Visualização em Lista"
+                >
+                  <List size={18} />
+                </button>
+           </div>
+           
+           <button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 font-bold flex items-center gap-2 transition text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(220,38,38,0.4)]"><Plus size={16} /> <span className="hidden md:inline">Novo Frame</span></button></div>
       </header>
       <main className="p-8 max-w-[1800px] mx-auto min-h-[calc(100vh-100px)]">
-        {loading ? (<div className="flex flex-col items-center justify-center h-[60vh] gap-6"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p></div>) : frames.length === 0 ? (<div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950"><div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6"><Film size={40} className="text-zinc-700" strokeWidth={1} /></div><h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2><p className="text-zinc-600 text-sm mb-4 text-center max-w-md">Arraste seus frames para cá ou adicione manualmente.</p>{errorMsg && (<div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-xs font-mono max-w-md text-center">{errorMsg}</div>)}<div className="flex gap-4"><button onClick={() => fetchFrames(true)} className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"><RefreshCw size={16} /> Recarregar</button><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition">Adicionar Frame Inicial</button></div></div>) : (
-          <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : 'grid-cols-1'}`}>
+        {loading ? (<div className="flex flex-col items-center justify-center h-[60vh] gap-6"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p></div>) : frames.length === 0 ? (<div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950"><div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6"><Film size={40} className="text-zinc-700" strokeWidth={1} /></div><h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">NENHUM PROJETO ENCONTRADO</h2><p className="text-zinc-600 text-sm mb-4 text-center max-w-md">O Monolito está vazio. Inicie sua jornada criativa agora.</p>{errorMsg && (<div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-xs font-mono max-w-md text-center">{errorMsg}</div>)}<div className="flex gap-4"><button onClick={() => fetchFrames(true)} className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"><RefreshCw size={16} /> Recarregar</button><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition">Adicionar Frame Inicial</button></div></div>) : (
+          <div className={
+            viewMode === 'grid' 
+            ? "grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+            : "flex flex-col gap-12 max-w-4xl mx-auto"
+          }>
             {frames.map((frame, index) => {
-                if (!frame) return null; // Safe check for undefined frames
+                if (!frame) return null; 
                 return (
                     <FrameCard 
                         key={frame.id} 
@@ -1160,21 +1187,26 @@ export default function App() {
                         data={frame} 
                         onDelete={handleDeleteFrame} 
                         onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} 
-                        onSetCover={handleSetCover} 
                         onDragStart={handleDragStart} 
                         onDragEnter={handleDragEnter} 
                         onDragEnd={handleDragEnd} 
                         onDragOver={handleDragOver} 
-                        onInsert={handleInsertAt} // Passa a função de inserção
-                        onManualOrderChange={handleManualOrderChange} // Passa a função de troca manual
+                        onInsert={handleInsertAt} 
+                        onManualOrderChange={handleManualOrderChange} 
+                        viewMode={viewMode}
+                        existingTitles={existingTitles}
                     />
                 );
             })}
-            <button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="group relative bg-zinc-950 border border-dashed border-zinc-800 hover:border-red-600/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[350px]"><div className="w-full h-full flex flex-col items-center justify-center"><div className="w-16 h-16 bg-zinc-900 group-hover:bg-red-600 flex items-center justify-center transition-colors mb-6 rounded-full group-hover:shadow-[0_0_15px_rgba(220,38,38,0.5)]"><Plus className="text-zinc-500 group-hover:text-white" size={32} /></div><span className="text-zinc-500 font-bold text-xs uppercase tracking-widest group-hover:text-red-500 transition-colors">Adicionar Frame</span></div></button>
+            
+            {/* Botão de Adicionar ao Final - Apenas no Grid */}
+            {viewMode === 'grid' && (
+              <button onClick={() => { setEditingFrame(null); setInsertAtIndex(null); setIsEditorOpen(true); }} className="group relative bg-zinc-950 border border-dashed border-zinc-800 hover:border-red-600/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[350px]"><div className="w-full h-full flex flex-col items-center justify-center"><div className="w-16 h-16 bg-zinc-900 group-hover:bg-red-600 flex items-center justify-center transition-colors mb-6 rounded-full group-hover:shadow-[0_0_15px_rgba(220,38,38,0.5)]"><Plus className="text-zinc-500 group-hover:text-white" size={32} /></div><span className="text-zinc-500 font-bold text-xs uppercase tracking-widest group-hover:text-red-500 transition-colors">Adicionar Frame</span></div></button>
+            )}
           </div>
         )}
       </main>
-      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} />
+      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} existingTitles={existingTitles} />
       {carouselOpen && (<CarouselModal frames={frames} initialIndex={carouselStartIndex} onClose={() => setCarouselOpen(false)} />)}
     </div>
   );
