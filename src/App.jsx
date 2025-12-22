@@ -606,17 +606,17 @@ export default function App() {
 
     setIsMigrating(true);
     try {
-        // 1. Buscar frames que têm base64 mas NÃO têm URL
-        const { data: framesToMigrate, error } = await supabase
+        // 1. Buscar APENAS IDs (leve) para não travar o banco
+        const { data: framesIds, error } = await supabase
             .from('sbframes')
-            .select('id, image_base64')
+            .select('id')
             .not('image_base64', 'is', null)
             .is('image_url', null)
-            .limit(20); // Faz em lotes de 20 para não travar
+            .limit(10); // Processa de 10 em 10 para segurança
 
         if (error) throw error;
 
-        if (framesToMigrate.length === 0) {
+        if (!framesIds || framesIds.length === 0) {
             alert("Nenhuma imagem pendente de migração encontrada neste lote.");
             setIsMigrating(false);
             return;
@@ -624,30 +624,38 @@ export default function App() {
 
         let successCount = 0;
 
-        for (const frame of framesToMigrate) {
+        for (const frameIdObj of framesIds) {
             try {
-                // Converter base64 para Blob
-                const blob = await base64ToBlob(frame.image_base64);
-                // Criar arquivo simulado para upload
-                const file = new File([blob], `migrated_${frame.id}.png`, { type: 'image/png' });
+                // Busca dados PESADOS individualmente
+                const { data: frameData, error: frameError } = await supabase
+                    .from('sbframes')
+                    .select('image_base64')
+                    .eq('id', frameIdObj.id)
+                    .single();
                 
-                // Upload
+                if (frameError || !frameData) continue;
+
+                // Converter base64 para Blob
+                const blob = await base64ToBlob(frameData.image_base64);
+                const file = new File([blob], `migrated_${frameIdObj.id}.png`, { type: 'image/png' });
+                
+                // Upload para Storage
                 const publicUrl = await uploadToStorage(file);
 
-                // Atualizar banco
+                // Atualizar banco (limpa o pesado e põe o leve)
                 if (publicUrl) {
                     await supabase
                         .from('sbframes')
-                        .update({ image_url: publicUrl, image_base64: null }) // Limpa o pesado
-                        .eq('id', frame.id);
+                        .update({ image_url: publicUrl, image_base64: null }) 
+                        .eq('id', frameIdObj.id);
                     successCount++;
                 }
             } catch (err) {
-                console.error(`Falha ao migrar frame ${frame.id}:`, err);
+                console.error(`Falha ao migrar frame ${frameIdObj.id}:`, err);
             }
         }
 
-        alert(`Migração concluída! ${successCount} imagens migradas. Se houver mais, clique novamente.`);
+        alert(`Lote concluído! ${successCount} imagens migradas. Clique novamente no raio para continuar.`);
         if (currentProject) fetchFrames(true);
 
     } catch (err) {
