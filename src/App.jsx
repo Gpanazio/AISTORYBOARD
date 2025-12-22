@@ -461,7 +461,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving }) => {
   );
 };
 
-const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd, onSetCover }) => {
+const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, onDragEnd, onSetCover, onDragOver }) => {
   const [copied, setCopied] = useState(false);
   
   const handleCopyPrompt = () => {
@@ -483,7 +483,7 @@ const FrameCard = ({ data, onDelete, onEdit, index, onDragStart, onDragEnter, on
       onDragStart={(e) => onDragStart(e, index)}
       onDragEnter={(e) => onDragEnter(e, index)}
       onDragEnd={onDragEnd}
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={(e) => { e.preventDefault(); if(onDragOver) onDragOver(e); }}
     >
       <div className="relative aspect-video bg-black overflow-hidden" onClick={() => onEdit(data)}>
         {imageSource ? (
@@ -560,6 +560,9 @@ export default function App() {
 
   const dragItem = useRef();
   const dragOverItem = useRef();
+  
+  // Ref para o Auto Scroll
+  const scrollInterval = useRef(null);
 
   // Função robusta para Upload no Storage
   const uploadToStorage = async (file) => {
@@ -741,8 +744,20 @@ export default function App() {
     }
   };
 
-  const handleDragOverFile = (e) => { e.preventDefault(); if (e.dataTransfer.types.includes('Files')) setIsDraggingFile(true); };
-  const handleDragLeaveFile = (e) => { e.preventDefault(); setIsDraggingFile(false); };
+  const handleDragOverFile = (e) => { 
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) {
+        setIsDraggingFile(true);
+    }
+  };
+
+  const handleDragLeaveFile = (e) => { 
+    e.preventDefault();
+    // Apenas desativa se o mouse saiu da janela inteira ou do container principal
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+        setIsDraggingFile(false);
+    }
+  };
   
   const handleDropFile = async (e) => {
     e.preventDefault();
@@ -752,6 +767,18 @@ export default function App() {
     if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
     await uploadFilesBatch(files);
   };
+
+  // Drop no Overlay (Para garantir captura)
+  const handleOverlayDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+    
+    if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+    const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+    if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
+    await uploadFilesBatch(files);
+  }
 
   const uploadFilesBatch = async (files) => {
     if (!supabase || !currentProject) return;
@@ -805,6 +832,42 @@ export default function App() {
         alert(`${failCount} imagens falharam. Verifique se o Bucket 'sbbrick' existe e é público.`);
     }
   };
+  
+  // --- AUTO-SCROLL LOGIC ---
+  const handleAutoScroll = (e) => {
+    const { clientY } = e;
+    const height = window.innerHeight;
+    const threshold = 150; // pixels from edge
+    const maxScrollSpeed = 20;
+
+    if (scrollInterval.current) {
+      clearInterval(scrollInterval.current);
+      scrollInterval.current = null;
+    }
+
+    if (clientY < threshold) {
+       // Scroll Up
+       const intensity = (threshold - clientY) / threshold;
+       const speed = -maxScrollSpeed * intensity;
+       scrollInterval.current = setInterval(() => {
+         window.scrollBy(0, speed);
+       }, 16);
+    } else if (clientY > (height - threshold)) {
+       // Scroll Down
+       const intensity = (clientY - (height - threshold)) / threshold;
+       const speed = maxScrollSpeed * intensity;
+       scrollInterval.current = setInterval(() => {
+         window.scrollBy(0, speed);
+       }, 16);
+    }
+  };
+
+  const stopAutoScroll = () => {
+    if (scrollInterval.current) {
+      clearInterval(scrollInterval.current);
+      scrollInterval.current = null;
+    }
+  };
 
   const handleDragStart = (e, position) => { dragItem.current = position; };
   
@@ -830,7 +893,13 @@ export default function App() {
     setFrames(copyListItems);
   };
   
+  const handleDragOver = (e) => {
+     e.preventDefault();
+     handleAutoScroll(e);
+  };
+  
   const handleDragEnd = async () => { 
+    stopAutoScroll();
     dragItem.current = null; 
     dragOverItem.current = null; 
     if (!supabase) return; 
@@ -928,8 +997,27 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" onDragOver={handleDragOverFile} onDragLeave={handleDragLeaveFile} onDrop={handleDropFile}>
-      {isDraggingFile && (<div className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center pointer-events-none"><UploadCloud size={80} className="text-red-600 mb-4 animate-bounce" /><h2 className="text-3xl font-bold text-white uppercase tracking-widest">Soltar Frames Aqui</h2><p className="text-zinc-500 mt-2">Upload direto para o Storage</p></div>)}
+    <div 
+        className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" 
+        onDragOver={handleDragOverFile} 
+        onDragLeave={handleDragLeaveFile}
+        onDrop={handleDropFile}
+    >
+      
+      {/* DROP ZONE OVERLAY - Agora lida com o drop diretamente */}
+      {isDraggingFile && (
+          <div 
+            className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center"
+            onDragOver={(e) => e.preventDefault()}
+            onDragLeave={() => setIsDraggingFile(false)}
+            onDrop={handleOverlayDrop}
+          >
+              <UploadCloud size={80} className="text-red-600 mb-4 animate-bounce pointer-events-none" />
+              <h2 className="text-3xl font-bold text-white uppercase tracking-widest pointer-events-none">Soltar Frames Aqui</h2>
+              <p className="text-zinc-500 mt-2 pointer-events-none">Upload direto para o Storage</p>
+          </div>
+      )}
+
       {uploadProgress && (<div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up"><Loader2 className="animate-spin text-red-600" size={24} /><div><p className="text-xs font-bold text-white uppercase tracking-widest">Enviando...</p><p className="text-xs text-zinc-500">{uploadProgress.current}/{uploadProgress.total} arquivos</p></div></div>)}
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
@@ -951,6 +1039,7 @@ export default function App() {
                         onDragStart={handleDragStart} 
                         onDragEnter={handleDragEnter} 
                         onDragEnd={handleDragEnd} 
+                        onDragOver={handleDragOver} // Passa o auto-scroll
                     />
                 );
             })}
