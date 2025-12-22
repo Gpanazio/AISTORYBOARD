@@ -285,7 +285,11 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {projects.map(project => (
+          {projects.map(project => {
+            // SAFEGUARD: Se project for undefined ou não tiver id, ignora
+            if (!project || !project.id) return null;
+
+            return (
             <div 
               key={project.id}
               onClick={() => onSelect(project)}
@@ -338,7 +342,8 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
                   </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -736,21 +741,8 @@ export default function App() {
     }
   };
 
-  // --- DRAG AND DROP EXTERNO (FILES) ---
-  const handleDragOverFile = (e) => { 
-    e.preventDefault();
-    if (e.dataTransfer.types.includes('Files')) {
-        setIsDraggingFile(true);
-    }
-  };
-
-  const handleDragLeaveFile = (e) => { 
-    e.preventDefault();
-    // Apenas desativa se o mouse saiu da janela inteira ou do container principal
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-        setIsDraggingFile(false);
-    }
-  };
+  const handleDragOverFile = (e) => { e.preventDefault(); if (e.dataTransfer.types.includes('Files')) setIsDraggingFile(true); };
+  const handleDragLeaveFile = (e) => { e.preventDefault(); setIsDraggingFile(false); };
   
   const handleDropFile = async (e) => {
     e.preventDefault();
@@ -760,18 +752,6 @@ export default function App() {
     if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
     await uploadFilesBatch(files);
   };
-
-  // Drop no Overlay (Para garantir captura)
-  const handleOverlayDrop = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingFile(false);
-    
-    if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
-    const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-    if (files.length === 0) { alert("Apenas arquivos de imagem são permitidos."); return; }
-    await uploadFilesBatch(files);
-  }
 
   const uploadFilesBatch = async (files) => {
     if (!supabase || !currentProject) return;
@@ -827,8 +807,51 @@ export default function App() {
   };
 
   const handleDragStart = (e, position) => { dragItem.current = position; };
-  const handleDragEnter = (e, position) => { e.preventDefault(); dragOverItem.current = position; const copyListItems = [...frames]; const dragItemContent = copyListItems[dragItem.current]; copyListItems.splice(dragItem.current, 1); copyListItems.splice(dragOverItem.current, 0, dragItemContent); dragItem.current = position; setFrames(copyListItems); };
-  const handleDragEnd = async () => { dragItem.current = null; dragOverItem.current = null; if (!supabase) return; const updates = frames.map((frame, index) => ({ id: frame.id, order_index: index, project_id: currentProject.id, updated_at: new Date() })); try { const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' }); if (error) throw error; } catch (error) { console.error("Erro ao salvar ordem:", error); } };
+  
+  const handleDragEnter = (e, position) => {
+    e.preventDefault();
+    // Guard Clause: Se não estiver arrastando um card (ex: arrastando arquivo externo), ignora
+    if (dragItem.current === null || dragItem.current === undefined) return;
+    
+    dragOverItem.current = position;
+    
+    // Safety check: Garante que os índices estão dentro dos limites
+    if (position < 0 || position >= frames.length || dragItem.current < 0 || dragItem.current >= frames.length) return;
+
+    const copyListItems = [...frames];
+    const dragItemContent = copyListItems[dragItem.current];
+    
+    // Safety check: Se o item não for encontrado, aborta
+    if (!dragItemContent) return;
+
+    copyListItems.splice(dragItem.current, 1);
+    copyListItems.splice(dragOverItem.current, 0, dragItemContent);
+    dragItem.current = position;
+    setFrames(copyListItems);
+  };
+  
+  const handleDragEnd = async () => { 
+    dragItem.current = null; 
+    dragOverItem.current = null; 
+    if (!supabase) return; 
+    const updates = frames.map((frame, index) => {
+        // Safety Check
+        if (!frame) return null;
+        return { 
+            id: frame.id, 
+            order_index: index, 
+            project_id: currentProject.id, 
+            updated_at: new Date() 
+        }
+    }).filter(Boolean); // Remove nulos
+    
+    try { 
+        const { error } = await supabase.from('sbframes').upsert(updates, { onConflict: 'id' }); 
+        if (error) throw error; 
+    } catch (error) { 
+        console.error("Erro ao salvar ordem:", error); 
+    } 
+  };
   
   const handleSaveFrame = async (formData) => {
     if (!supabase || !currentProject) return;
@@ -905,27 +928,8 @@ export default function App() {
   }
 
   return (
-    <div 
-        className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" 
-        onDragOver={handleDragOverFile} 
-        onDragLeave={handleDragLeaveFile}
-        onDrop={handleDropFile}
-    >
-      
-      {/* DROP ZONE OVERLAY - Agora lida com o drop diretamente */}
-      {isDraggingFile && (
-          <div 
-            className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center"
-            onDragOver={(e) => e.preventDefault()}
-            onDragLeave={() => setIsDraggingFile(false)}
-            onDrop={handleOverlayDrop}
-          >
-              <UploadCloud size={80} className="text-red-600 mb-4 animate-bounce pointer-events-none" />
-              <h2 className="text-3xl font-bold text-white uppercase tracking-widest pointer-events-none">Soltar Frames Aqui</h2>
-              <p className="text-zinc-500 mt-2 pointer-events-none">Upload direto para o Storage</p>
-          </div>
-      )}
-
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-red-600 selection:text-white relative" onDragOver={handleDragOverFile} onDragLeave={handleDragLeaveFile} onDrop={handleDropFile}>
+      {isDraggingFile && (<div className="fixed inset-0 z-50 bg-black/90 border-4 border-red-600 border-dashed m-4 rounded-xl flex flex-col items-center justify-center pointer-events-none"><UploadCloud size={80} className="text-red-600 mb-4 animate-bounce" /><h2 className="text-3xl font-bold text-white uppercase tracking-widest">Soltar Frames Aqui</h2><p className="text-zinc-500 mt-2">Upload direto para o Storage</p></div>)}
       {uploadProgress && (<div className="fixed bottom-8 right-8 z-50 bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-slide-up"><Loader2 className="animate-spin text-red-600" size={24} /><div><p className="text-xs font-bold text-white uppercase tracking-widest">Enviando...</p><p className="text-xs text-zinc-500">{uploadProgress.current}/{uploadProgress.total} arquivos</p></div></div>)}
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur border-b border-zinc-900 px-8 py-6 flex justify-between items-center">
         <div className="flex items-center gap-6"><button onClick={() => setCurrentProject(null)} className="p-2 text-zinc-500 hover:text-white transition" title="Voltar"><ChevronLeft size={24} /></button><div className="flex flex-col"><h1 className="text-2xl font-bold tracking-tight text-white leading-none uppercase">{currentProject.title}</h1><span className="text-[10px] font-mono text-zinc-500 mt-2 uppercase tracking-widest">BrickBoard Story System</span></div></div>
@@ -934,7 +938,22 @@ export default function App() {
       <main className="p-8 max-w-[1800px] mx-auto min-h-[calc(100vh-100px)]">
         {loading ? (<div className="flex flex-col items-center justify-center h-[60vh] gap-6"><div className="relative"><div className="absolute inset-0 bg-red-600 blur-xl opacity-20 rounded-full animate-pulse"></div><Loader2 className="animate-spin text-red-600 relative z-10" size={64} /></div><p className="text-zinc-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse">Carregando Storyboard...</p></div>) : frames.length === 0 ? (<div className="flex flex-col items-center justify-center py-40 border border-dashed border-zinc-900 bg-zinc-950"><div className="w-20 h-20 bg-zinc-900 flex items-center justify-center mb-6"><Film size={40} className="text-zinc-700" strokeWidth={1} /></div><h2 className="text-xl font-bold text-white mb-2 uppercase tracking-widest">Projeto Vazio</h2><p className="text-zinc-600 text-sm mb-4 text-center max-w-md">Arraste seus frames para cá ou adicione manualmente.</p>{errorMsg && (<div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-4 text-xs font-mono max-w-md text-center">{errorMsg}</div>)}<div className="flex gap-4"><button onClick={() => fetchFrames(true)} className="bg-zinc-800 text-white px-6 py-3 font-bold uppercase tracking-widest hover:bg-zinc-700 transition flex items-center gap-2"><RefreshCw size={16} /> Recarregar</button><button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="bg-red-600 text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-red-700 transition">Adicionar Frame Inicial</button></div></div>) : (
           <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : 'grid-cols-1'}`}>
-            {frames.map((frame, index) => (<FrameCard key={frame.id} index={index} data={frame} onDelete={handleDeleteFrame} onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} onSetCover={handleSetCover} onDragStart={handleDragStart} onDragEnter={handleDragEnter} onDragEnd={handleDragEnd} />))}
+            {frames.map((frame, index) => {
+                if (!frame) return null; // Safe check for undefined frames
+                return (
+                    <FrameCard 
+                        key={frame.id} 
+                        index={index} 
+                        data={frame} 
+                        onDelete={handleDeleteFrame} 
+                        onEdit={(f) => { setEditingFrame(f); setIsEditorOpen(true); }} 
+                        onSetCover={handleSetCover} 
+                        onDragStart={handleDragStart} 
+                        onDragEnter={handleDragEnter} 
+                        onDragEnd={handleDragEnd} 
+                    />
+                );
+            })}
             <button onClick={() => { setEditingFrame(null); setIsEditorOpen(true); }} className="group relative bg-zinc-950 border border-dashed border-zinc-800 hover:border-red-600/50 hover:bg-zinc-900 transition-all flex flex-col h-full text-left min-h-[350px]"><div className="w-full h-full flex flex-col items-center justify-center"><div className="w-16 h-16 bg-zinc-900 group-hover:bg-red-600 flex items-center justify-center transition-colors mb-6 rounded-full group-hover:shadow-[0_0_15px_rgba(220,38,38,0.5)]"><Plus className="text-zinc-500 group-hover:text-white" size={32} /></div><span className="text-zinc-500 font-bold text-xs uppercase tracking-widest group-hover:text-red-500 transition-colors">Adicionar Frame</span></div></button>
           </div>
         )}
