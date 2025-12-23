@@ -83,6 +83,28 @@ const copyToClipboard = (text) => {
   document.body.removeChild(textArea);
 };
 
+// Função para forçar o download (blob) em vez de abrir a imagem
+const downloadImage = async (url, filename) => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'download.png';
+    document.body.appendChild(link);
+    link.click();
+    
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error('Erro no download:', error);
+    // Fallback caso o fetch falhe (ex: CORS restritivo)
+    window.open(url, '_blank');
+  }
+};
+
 // --- COMPONENTES ---
 
 const CarouselModal = ({ frames, initialIndex, onClose }) => {
@@ -410,17 +432,9 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      const fileName = formatFileName(file.name);
+      // NÃO definir título automaticamente com o nome do arquivo
+      // Mantém o título vazio ou o que o usuário já digitou, se for edição de imagem
       
-      if (existingTitles && existingTitles.has(fileName)) {
-          alert(`Atenção: Já existe um frame com o nome "${fileName}" neste projeto.`);
-      }
-
-      setFormData(prev => ({
-          ...prev, 
-          title: prev.title || fileName
-      }));
-
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, image: file, imagePreview: reader.result }));
@@ -438,6 +452,14 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
           // Opcional: fechar modal ou dar feedback
           alert("Variação adicionada à pilha!");
       }
+  };
+
+  const handleDownload = () => {
+    if (formData.imagePreview) {
+        const cleanTitle = (formData.title || 'frame').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const dName = `brickboard_${cleanTitle}.png`;
+        downloadImage(formData.imagePreview, dName);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -473,6 +495,17 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
                 <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 {formData.imagePreview ? 'Trocar Imagem Atual' : 'Selecionar Frame'}
             </label>
+
+            {/* Botão Download Overlay */}
+            {formData.imagePreview && (
+                <button 
+                    type="button"
+                    onClick={handleDownload}
+                    className="cursor-pointer border border-zinc-500 px-8 py-3 text-zinc-400 text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black hover:border-white transition flex items-center gap-2"
+                >
+                    <Download size={14} /> Baixar Frame
+                </button>
+            )}
 
             {/* Botão Secundário: Adicionar Variação (Apenas se já existir frame salvo) */}
             {initialData && (
@@ -691,7 +724,14 @@ const FrameCard = memo(({
             <p className="text-zinc-400 text-base leading-relaxed mb-6 font-light">{data.description || "Sem descrição disponível."}</p>
             
             <div className="flex gap-4 border-t border-zinc-900 pt-6">
-                 {originalSource && <a href={originalSource} download={downloadName} className="text-zinc-500 hover:text-white transition flex items-center gap-2 text-xs uppercase tracking-widest font-bold"><Download size={14} /> Download Original</a>}
+                 {originalSource && (
+                    <button 
+                        onClick={() => downloadImage(originalSource, downloadName)} 
+                        className="text-zinc-500 hover:text-white transition flex items-center gap-2 text-xs uppercase tracking-widest font-bold"
+                    >
+                        <Download size={14} /> Download Original
+                    </button>
+                 )}
                  {data.prompt && <button onClick={handleCopyPrompt} className={`text-xs uppercase tracking-widest font-bold flex items-center gap-2 ${copied ? 'text-red-500' : 'text-zinc-500 hover:text-white'} transition`}>{copied ? 'Copiado' : <><Copy size={14} /> Copiar Prompt</>}</button>}
             </div>
         </div>
@@ -709,7 +749,15 @@ const FrameCard = memo(({
             <div className="mt-auto pt-4 border-t border-zinc-900">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                    {originalSource && <a href={originalSource} download={downloadName} className="text-zinc-600 hover:text-red-500 transition flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold" title="Baixar Original" onClick={(e) => e.stopPropagation()}><Download size={12} /> <span className="hidden sm:inline">Download</span></a>}
+                    {originalSource && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); downloadImage(originalSource, downloadName); }} 
+                            className="text-zinc-600 hover:text-red-500 transition flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold" 
+                            title="Baixar Original"
+                        >
+                            <Download size={12} /> <span className="hidden sm:inline">Download</span>
+                        </button>
+                    )}
                     </div>
                     {data.prompt && <button onClick={handleCopyPrompt} className={`text-[10px] uppercase tracking-widest font-bold flex items-center gap-1 ${copied ? 'text-red-500' : 'text-zinc-600 hover:text-white'} transition`}>{copied ? 'COPIADO' : <><Copy size={12} /> PROMPT</>}</button>}
                 </div>
@@ -919,7 +967,8 @@ export default function App() {
         try {
             const publicUrl = await uploadToStorage(file);
             const thumbBase64 = await generateThumbnail(file); 
-            const fileName = formatFileName(file.name);
+            // Titulo vazio para não pegar o nome do arquivo
+            const fileName = ''; 
             const thisOrderIndex = finalGroupId ? (groupedFrames.find(g => g[0].stack_group_id === finalGroupId)?.[0].order_index ?? currentOrderIndex) : currentOrderIndex + i;
 
             const frameData = {
@@ -957,7 +1006,8 @@ export default function App() {
           // 1. Upload e Thumb
           const publicUrl = await uploadToStorage(file);
           const thumbBase64 = await generateThumbnail(file); 
-          const fileName = formatFileName(file.name);
+          // Titulo vazio para não pegar nome do arquivo
+          const fileName = '';
 
           // 2. Definir Grupo (Criar se não existe)
           let groupId = sourceFrame.stack_group_id;
