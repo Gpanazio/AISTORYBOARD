@@ -401,7 +401,7 @@ const ProjectList = ({ projects, onSelect, onCreate, onDelete, onUpdate, loading
   );
 };
 
-const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingTitles, onAddVariation }) => {
+const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingTitles, onAddVariation, onNavigate }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -433,7 +433,6 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
     const file = e.target.files[0];
     if (file) {
       // NÃO definir título automaticamente com o nome do arquivo
-      // Mantém o título vazio ou o que o usuário já digitou, se for edição de imagem
       
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -477,6 +476,27 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
         
         {/* Coluna Visual (Imagem) - 75% da largura */}
         <div className="w-full md:w-3/4 bg-black flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-zinc-900 relative group">
+          
+          {/* BOTÕES DE NAVEGAÇÃO VERMELHOS */}
+          {initialData && onNavigate && (
+            <>
+              <button 
+                  onClick={() => onNavigate('prev')}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-red-600 text-white p-3 rounded-full hover:bg-red-700 transition z-30 shadow-lg hover:scale-110 active:scale-95"
+                  title="Frame Anterior"
+              >
+                  <ChevronLeft size={24} />
+              </button>
+              <button 
+                  onClick={() => onNavigate('next')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-red-600 text-white p-3 rounded-full hover:bg-red-700 transition z-30 shadow-lg hover:scale-110 active:scale-95"
+                  title="Próximo Frame"
+              >
+                  <ChevronRight size={24} />
+              </button>
+            </>
+          )}
+
           {formData.imagePreview ? (
             <img src={formData.imagePreview} alt="Preview" className="w-full h-full object-contain p-4 md:p-8" />
           ) : (
@@ -487,7 +507,7 @@ const FrameEditor = ({ isOpen, onClose, onSave, initialData, isSaving, existingT
           )}
           
           {/* OVERLAY DE AÇÕES NA IMAGEM */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity gap-4">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity gap-4 z-20">
             
             {/* Botão Principal: Trocar/Selecionar Imagem */}
             <label className="cursor-pointer border border-white/50 px-8 py-3 text-white text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black transition flex items-center gap-2">
@@ -1086,6 +1106,28 @@ export default function App() {
   const handleAutoScroll = (e) => { /* ... */ };
   const stopAutoScroll = () => { /* ... */ };
 
+  // --- NOVA FUNÇÃO DE NAVEGAÇÃO ENTRE FRAMES NO EDITOR ---
+  const handleNavigateEditor = (direction) => {
+    if (!editingFrame) return;
+
+    // Considera o primeiro frame de cada stack como o "representante" visual para navegação
+    const visualList = groupedFrames.map(stack => stack[0]);
+    
+    // Encontra o índice do stack atual (verifica se algum frame do stack bate com o ID atual)
+    const currentStackIndex = groupedFrames.findIndex(stack => stack.some(f => f.id === editingFrame.id));
+
+    if (currentStackIndex === -1) return;
+
+    let newIndex;
+    if (direction === 'next') {
+        newIndex = (currentStackIndex + 1) % visualList.length;
+    } else {
+        newIndex = (currentStackIndex - 1 + visualList.length) % visualList.length;
+    }
+
+    setEditingFrame(visualList[newIndex]);
+  };
+
   const handleSaveFrame = async (formData) => {
     if (!supabase || !currentProject) return;
     if (!formData.image && !formData.imagePreview) { alert("A imagem é obrigatória."); return; }
@@ -1140,7 +1182,7 @@ export default function App() {
           </div>
         )}
       </main>
-      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} existingTitles={existingTitles} onAddVariation={handleAddStackVariation} />
+      <FrameEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} onSave={handleSaveFrame} initialData={editingFrame} isSaving={isSaving} existingTitles={existingTitles} onAddVariation={handleAddStackVariation} onNavigate={handleNavigateEditor} />
       {carouselOpen && (<CarouselModal frames={flatFramesForCarousel} initialIndex={carouselStartIndex} onClose={() => setCarouselOpen(false)} />)}
     </div>
   );
